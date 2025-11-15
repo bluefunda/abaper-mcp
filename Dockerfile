@@ -20,19 +20,19 @@ RUN apk add --no-cache git ca-certificates
 # Set working directory
 WORKDIR /build
 
-# Copy go mod files first for better layer caching
-COPY go.mod go.sum ./
-
 # Enable auto-downloading of required Go toolchain
 ENV GOTOOLCHAIN=auto
+
+# Copy go mod files first for better layer caching
+COPY go.mod go.sum ./
 
 RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build the binary with version information
-RUN GOTOOLCHAIN=auto CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+# Build the binary with version information (ENV persists, no need to repeat GOTOOLCHAIN)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w \
     -X main.Version=${VERSION} \
     -X main.BuildTime=${BUILD_TIME} \
