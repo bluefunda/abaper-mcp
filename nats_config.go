@@ -118,7 +118,8 @@ func (nc *NATSConfig) Connect() (*NATSConnection, error) {
 			kv, err = natsConn.js.CreateKeyValue(&nats.KeyValueConfig{
 				Bucket:      nc.KVBucket,
 				Description: "ABAPER MCP configuration storage",
-				TTL:         0, // No expiration
+				TTL:         0,                // No expiration
+				MaxBytes:    1024 * 1024 * 10, // 10MB max size
 			})
 			if err != nil {
 				conn.Close()
