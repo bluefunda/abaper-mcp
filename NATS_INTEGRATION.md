@@ -120,7 +120,9 @@ Running in stdio mode (Claude Desktop compatible)
 |----------|-------------|---------|
 | `ABAPER_MODE` | Operational mode | `stdio`, `nats`, `dual` |
 | `NATS_URL` | NATS server URL | `tls://connect.ngs.global:4222` |
-| `NATS_CREDS` | Path to NATS credentials file | `/var/nats/creds/user.creds` |
+| `NATS_CREDS` | **File path** to NATS credentials file (inside container) | `/etc/ngs/user.creds` |
+
+**IMPORTANT**: `NATS_CREDS` must be a **file path**, not the credentials content. The credentials file should be mounted as a volume.
 
 ### Optional NATS Configuration
 
