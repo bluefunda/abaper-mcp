@@ -22,11 +22,14 @@ jobs:
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
           echo "Latest tag: $LATEST_TAG"
 
-          # Parse version components
-          IFS='.' read -r -a VERSION_PARTS <<< "${LATEST_TAG#v}"
-          MAJOR="${VERSION_PARTS[0]}"
-          MINOR="${VERSION_PARTS[1]}"
-          PATCH="${VERSION_PARTS[2]}"
+          # Parse version components - remove 'v' prefix if present
+          VERSION_NO_V="${LATEST_TAG#v}"
+
+          # Split version into components with defaults
+          IFS='.' read -r -a VERSION_PARTS <<< "$VERSION_NO_V"
+          MAJOR="${VERSION_PARTS[0]:-0}"
+          MINOR="${VERSION_PARTS[1]:-0}"
+          PATCH="${VERSION_PARTS[2]:-0}"
 
           # Get commit message
           COMMIT_MSG=$(git log -1 --pretty=%B)
@@ -51,6 +54,10 @@ jobs:
           echo "New version: $NEW_VERSION"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
+          # Debug output
+          echo "Version components: MAJOR=$MAJOR MINOR=$MINOR PATCH=$PATCH"
+          echo "Calculated version: $NEW_VERSION"
+
           # Create and push tag
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -58,9 +65,11 @@ jobs:
           if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
             echo "Tag v$NEW_VERSION already exists, skipping tag creation"
           else
+            echo "Creating tag v$NEW_VERSION"
             git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
-            git push origin "v$NEW_VERSION"
-            echo "Created and pushed tag v$NEW_VERSION"
+            echo "Pushing tag v$NEW_VERSION to origin"
+            git push origin "v$NEW_VERSION" || echo "Warning: Failed to push tag, may already exist on remote"
+            echo "Tag v$NEW_VERSION processed"
           fi
 
       - name: Set up Docker Buildx
