@@ -2,11 +2,12 @@
 # Supports multi-architecture builds (amd64, arm64)
 
 # Build arguments
-ARG GO_VERSION=1.23
+ARG GO_VERSION=alpine
 ARG ALPINE_VERSION=3.20
 
 # Stage 1: Build the Go binary
-FROM golang:${GO_VERSION}-alpine AS builder
+# Using golang:alpine to get the latest stable Go version
+FROM golang:${GO_VERSION} AS builder
 
 # Build arguments for version information
 ARG VERSION=dev
