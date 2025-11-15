@@ -2,7 +2,7 @@
 # Supports multi-architecture builds (amd64, arm64)
 
 # Build arguments
-ARG GO_VERSION=1.21
+ARG GO_VERSION=1.23
 ARG ALPINE_VERSION=3.20
 
 # Stage 1: Build the Go binary
