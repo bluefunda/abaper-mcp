@@ -1,0 +1,28 @@
+# Binaries
+abaper-mcp
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+
+# Go workspace
+vendor/
+dist/
+
+# Environment files
+.env
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

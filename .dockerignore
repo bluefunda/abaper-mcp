@@ -1,0 +1,47 @@
+# Git files
+.git
+.gitignore
+.github
+
+# Build artifacts
+abaper-mcp
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Documentation
+*.md
+!README.md
+!LICENSE
+
+# Environment and config
+.env
+.env.*
+*.log
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+*_test.go
+test/
+coverage.txt
+
+# CI/CD
+.goreleaser.yml
+.github/workflows/
+
+# Makefile
+Makefile

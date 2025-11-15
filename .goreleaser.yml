@@ -1,0 +1,336 @@
+# GoReleaser v2 configuration for ABAPER MCP
+version: 2
+
+project_name: abaper-mcp
+
+env:
+  - GO111MODULE=on
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+
+builds:
+  - id: abaper-mcp
+    main: .
+    binary: abaper-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      # Windows ARM support is limited
+      - goos: windows
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+      # FreeBSD ARM support - disabled
+      - goos: freebsd
+        goarch: arm64
+      - goos: freebsd
+        goarch: arm
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+      - -X main.GitCommit={{.Commit}}
+
+archives:
+  - id: default
+    files:
+      - README.md
+      - LICENSE
+      - CLAUDE_DESKTOP_SETUP.md
+      - CONTRIBUTING.md
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^build:"
+      - "^chore:"
+      - "typo"
+      - "minor"
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: "Bug fixes"
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: "MCP Tools"
+      regexp: "^.*tool[(\\w)]*:+.*$"
+      order: 2
+    - title: "MCP Resources"
+      regexp: "^.*resource[(\\w)]*:+.*$"
+      order: 3
+    - title: "MCP Prompts"
+      regexp: "^.*prompt[(\\w)]*:+.*$"
+      order: 4
+    - title: Others
+      order: 999
+
+# GitHub release
+release:
+  github:
+    owner: bluefunda
+    name: abaper-mcp
+  draft: false
+  prerelease: auto
+  mode: replace
+  replace_existing_draft: true
+  header: |
+    ## What's Changed
+
+    Welcome to this new release of **ABAPER MCP** - Model Context Protocol Server for SAP ABAP! 🎉
+
+    ### Key Features
+    - 🤖 **MCP Server**: Full Model Context Protocol implementation
+    - 🔧 **MCP Tools**: Execute ABAP operations (get, search, create objects)
+    - 📚 **MCP Resources**: URI-based access to ABAP objects
+    - 💡 **MCP Prompts**: Pre-configured workflows for code analysis and development
+    - 🔌 **Claude Desktop**: Seamless integration with Claude Desktop
+    - 🌐 **SAP Integration**: Direct connection to SAP ADT systems
+
+    ### Supported Architectures
+    - **Linux**: x86_64, ARM64, ARMv6, ARMv7
+    - **macOS**: x86_64 (Intel), ARM64 (Apple Silicon)
+    - **Windows**: x86_64
+    - **FreeBSD**: x86_64
+
+  footer: |
+    ## Docker Images
+
+    Multi-architecture Docker images are available:
+
+    ```bash
+    # Pull latest (supports AMD64 and ARM64)
+    docker pull bluefunda/abaper-mcp:{{ .Tag }}
+    docker pull bluefunda/abaper-mcp:latest
+
+    # Architecture-specific pulls
+    docker pull bluefunda/abaper-mcp:{{ .Tag }}-amd64
+    docker pull bluefunda/abaper-mcp:{{ .Tag }}-arm64
+    ```
+
+    ## Installation Examples
+
+    ### macOS (Intel & Apple Silicon)
+    ```bash
+    # Intel Macs
+    curl -L https://github.com/bluefunda/abaper-mcp/releases/download/{{ .Tag }}/abaper-mcp_{{ .Tag }}_Darwin_x86_64.tar.gz | tar xz
+    # Apple Silicon Macs
+    curl -L https://github.com/bluefunda/abaper-mcp/releases/download/{{ .Tag }}/abaper-mcp_{{ .Tag }}_Darwin_arm64.tar.gz | tar xz
+    ```
+
+    ### Linux
+    ```bash
+    # AMD64
+    curl -L https://github.com/bluefunda/abaper-mcp/releases/download/{{ .Tag }}/abaper-mcp_{{ .Tag }}_Linux_x86_64.tar.gz | tar xz
+    # ARM64 (e.g., Raspberry Pi 4, AWS Graviton)
+    curl -L https://github.com/bluefunda/abaper-mcp/releases/download/{{ .Tag }}/abaper-mcp_{{ .Tag }}_Linux_arm64.tar.gz | tar xz
+    # ARMv7 (e.g., Raspberry Pi 3)
+    curl -L https://github.com/bluefunda/abaper-mcp/releases/download/{{ .Tag }}/abaper-mcp_{{ .Tag }}_Linux_armv7.tar.gz | tar xz
+    ```
+
+    ### Windows
+    ```powershell
+    # Download and extract
+    Invoke-WebRequest https://github.com/bluefunda/abaper-mcp/releases/download/{{ .Tag }}/abaper-mcp_{{ .Tag }}_Windows_x86_64.zip -OutFile abaper-mcp.zip
+    Expand-Archive abaper-mcp.zip -DestinationPath .
+    ```
+
+    ## Claude Desktop Configuration
+
+    Add to your `claude_desktop_config.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "abaper": {
+          "command": "/path/to/abaper-mcp",
+          "env": {
+            "SAP_HOST": "https://your-sap-host:8000",
+            "SAP_CLIENT": "100",
+            "SAP_USERNAME": "your-username",
+            "SAP_PASSWORD": "your-password"
+          }
+        }
+      }
+    }
+    ```
+
+    See [CLAUDE_DESKTOP_SETUP.md](https://github.com/bluefunda/abaper-mcp/blob/main/CLAUDE_DESKTOP_SETUP.md) for detailed setup instructions.
+
+    **Full Changelog**: https://github.com/bluefunda/abaper-mcp/compare/{{ .PreviousTag }}...{{ .Tag }}
+  extra_files:
+    - glob: ./LICENSE
+    - glob: ./CLAUDE_DESKTOP_SETUP.md
+
+# Linux packages
+nfpms:
+  - id: packages
+    package_name: abaper-mcp
+    vendor: BlueFunda, Inc.
+    homepage: https://github.com/bluefunda/abaper-mcp
+    maintainer: BlueFunda, Inc. <info@bluefunda.com>
+    description: |-
+      Model Context Protocol server for SAP ABAP development.
+      Enables AI assistants like Claude to interact with SAP ABAP systems
+      through the ABAP Development Tools (ADT) REST API.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    dependencies:
+      - ca-certificates
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/abaper-mcp/copyright
+        file_info:
+          mode: 0644
+      - src: ./README.md
+        dst: /usr/share/doc/abaper-mcp/README.md
+        file_info:
+          mode: 0644
+      - src: ./CLAUDE_DESKTOP_SETUP.md
+        dst: /usr/share/doc/abaper-mcp/CLAUDE_DESKTOP_SETUP.md
+        file_info:
+          mode: 0644
+    rpm:
+      group: Development/Tools
+      compression: lzma
+    deb:
+      lintian_overrides:
+        - statically-linked-binary
+        - changelog-file-missing-in-native-package
+
+# Docker images - Multi-architecture support
+dockers:
+  # AMD64 images
+  - id: amd64
+    image_templates:
+      - "bluefunda/abaper-mcp:{{ .Version }}-amd64"
+      - "bluefunda/abaper-mcp:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    extra_files:
+      - go.mod
+      - go.sum
+      - main.go
+      - config.go
+      - handlers.go
+      - tools.go
+      - resources.go
+      - prompts.go
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source=https://github.com/bluefunda/abaper-mcp"
+      - "--label=org.opencontainers.image.description=Model Context Protocol server for SAP ABAP development"
+      - "--label=org.opencontainers.image.vendor=BlueFunda, Inc."
+      - "--label=org.opencontainers.image.licenses=MIT"
+      - "--build-arg=VERSION={{.Version}}"
+      - "--build-arg=BUILD_TIME={{.Date}}"
+      - "--build-arg=GIT_COMMIT={{.FullCommit}}"
+      - "--build-arg=TARGETARCH=amd64"
+    goarch: amd64
+
+  # ARM64 images
+  - id: arm64
+    image_templates:
+      - "bluefunda/abaper-mcp:{{ .Version }}-arm64"
+      - "bluefunda/abaper-mcp:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    extra_files:
+      - go.mod
+      - go.sum
+      - main.go
+      - config.go
+      - handlers.go
+      - tools.go
+      - resources.go
+      - prompts.go
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source=https://github.com/bluefunda/abaper-mcp"
+      - "--label=org.opencontainers.image.description=Model Context Protocol server for SAP ABAP development - ARM64"
+      - "--label=org.opencontainers.image.vendor=BlueFunda, Inc."
+      - "--label=org.opencontainers.image.licenses=MIT"
+      - "--build-arg=VERSION={{.Version}}"
+      - "--build-arg=BUILD_TIME={{.Date}}"
+      - "--build-arg=GIT_COMMIT={{.FullCommit}}"
+      - "--build-arg=TARGETARCH=arm64"
+    goarch: arm64
+
+# Docker manifests for multi-arch images
+docker_manifests:
+  - name_template: "bluefunda/abaper-mcp:{{ .Version }}"
+    image_templates:
+      - "bluefunda/abaper-mcp:{{ .Version }}-amd64"
+      - "bluefunda/abaper-mcp:{{ .Version }}-arm64"
+  - name_template: "bluefunda/abaper-mcp:latest"
+    image_templates:
+      - "bluefunda/abaper-mcp:latest-amd64"
+      - "bluefunda/abaper-mcp:latest-arm64"
+
+# Universal Binary for macOS (combines Intel + Apple Silicon)
+universal_binaries:
+  - id: darwin-universal
+    name_template: "abaper-mcp"
+    replace: false
+    ids:
+      - abaper-mcp
+
+# Additional metadata
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"

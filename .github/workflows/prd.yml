@@ -1,0 +1,142 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          # Get the latest tag, default to 0.0.0 if no tags exist
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+
+          # Parse version components
+          IFS='.' read -r -a VERSION_PARTS <<< "${LATEST_TAG#v}"
+          MAJOR="${VERSION_PARTS[0]}"
+          MINOR="${VERSION_PARTS[1]}"
+          PATCH="${VERSION_PARTS[2]}"
+
+          # Get commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Commit message: $COMMIT_MSG"
+
+          # Determine version bump based on commit message
+          if [[ "$COMMIT_MSG" == *"[major]"* ]]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            echo "Major version bump"
+          elif [[ "$COMMIT_MSG" == *"[minor]"* ]]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            echo "Minor version bump"
+          else
+            PATCH=$((PATCH + 1))
+            echo "Patch version bump"
+          fi
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "New version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Create and push tag
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
+            echo "Tag v$NEW_VERSION already exists, skipping tag creation"
+          else
+            git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+            git push origin "v$NEW_VERSION"
+            echo "Created and pushed tag v$NEW_VERSION"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/abaper-mcp:latest
+            ${{ secrets.DOCKER_USERNAME }}/abaper-mcp:${{ steps.version.outputs.version }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+
+      - name: Deploy to production server
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SAP_HOST: ${{ secrets.SAP_HOST }}
+          SAP_CLIENT: ${{ secrets.SAP_CLIENT }}
+          SAP_USERNAME: ${{ secrets.SAP_USERNAME }}
+          SAP_PASSWORD: ${{ secrets.SAP_PASSWORD }}
+          NATS_URL: ${{ secrets.NATS_URL }}
+          NATS_CREDS: ${{ secrets.NATS_CREDS }}
+          ABAPER_MODE: ${{ secrets.ABAPER_MODE }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'EOF'
+            # Stop and remove existing container
+            docker stop abaper-mcp 2>/dev/null || true
+            docker rm abaper-mcp 2>/dev/null || true
+
+            # Pull latest image
+            docker pull ${{ secrets.DOCKER_USERNAME }}/abaper-mcp:latest
+
+            # Create network if it doesn't exist
+            docker network create mcp-network 2>/dev/null || true
+
+            # Run new container
+            docker run -d \
+              --name abaper-mcp \
+              --network mcp-network \
+              --restart unless-stopped \
+              -e SAP_HOST="${{ secrets.SAP_HOST }}" \
+              -e SAP_CLIENT="${{ secrets.SAP_CLIENT }}" \
+              -e SAP_USERNAME="${{ secrets.SAP_USERNAME }}" \
+              -e SAP_PASSWORD="${{ secrets.SAP_PASSWORD }}" \
+              -e ABAPER_MODE="${{ secrets.ABAPER_MODE }}" \
+              -e NATS_URL="${{ secrets.NATS_URL }}" \
+              -e NATS_CREDS="${{ secrets.NATS_CREDS }}" \
+              -e NATS_ENABLE_KV="true" \
+              -e NATS_ENABLE_MESSAGING="true" \
+              -v /var/log/abaper-mcp:/var/log/abaper \
+              -v /etc/abaper-mcp:/etc/abaper \
+              -v /var/nats/creds:/var/nats/creds:ro \
+              ${{ secrets.DOCKER_USERNAME }}/abaper-mcp:latest
+
+            # Cleanup old images
+            docker image prune -af --filter "until=24h"
+          EOF
+
+      - name: Cleanup workspace
+        if: always()
+        run: |
+          # Clean up workspace
+          rm -rf ${{ github.workspace }}/*
+          rm -rf ${{ github.workspace }}/.git
+
+          # Docker cleanup
+          docker system prune -af --volumes || true
