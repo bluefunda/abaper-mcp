@@ -32,7 +32,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary with version information
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+RUN GOTOOLCHAIN=auto CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w \
     -X main.Version=${VERSION} \
     -X main.BuildTime=${BUILD_TIME} \
