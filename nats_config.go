@@ -122,13 +122,17 @@ func (nc *NATSConfig) Connect() (*NATSConnection, error) {
 				MaxBytes:    1024 * 1024 * 10, // 10MB max size
 			})
 			if err != nil {
-				conn.Close()
-				return nil, fmt.Errorf("failed to access/create KV bucket: %w", err)
+				// KV store is optional - log warning but don't fail
+				fmt.Printf("Warning: Failed to access/create KV bucket: %v\n", err)
+				fmt.Println("Continuing without KV store - will use environment variables for configuration")
+			} else {
+				natsConn.kv = kv
+				fmt.Printf("Created KV bucket: %s\n", nc.KVBucket)
 			}
-			fmt.Printf("Created KV bucket: %s\n", nc.KVBucket)
+		} else {
+			natsConn.kv = kv
+			fmt.Printf("KV bucket '%s' ready\n", nc.KVBucket)
 		}
-		natsConn.kv = kv
-		fmt.Printf("KV bucket '%s' ready\n", nc.KVBucket)
 	}
 
 	return natsConn, nil

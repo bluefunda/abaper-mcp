@@ -129,10 +129,11 @@ func runDualMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
 	go func() {
 		natsConfig := NewNATSConfig()
 		natsConfig.EnableMessaging = true
+		natsConfig.EnableKV = false // Disable KV for messaging-only connection
 
 		natsConn, err := natsConfig.Connect()
 		if err != nil {
-			fmt.Printf("Warning: Failed to connect to NATS: %v\n", err)
+			fmt.Printf("Warning: Failed to connect to NATS for messaging: %v\n", err)
 			fmt.Println("Continuing with stdio mode only")
 			return
 		}
@@ -142,7 +143,7 @@ func runDualMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
 		if err := natsMCP.Start(); err != nil {
 			fmt.Printf("Warning: Failed to start NATS MCP server: %v\n", err)
 		} else {
-			fmt.Println("NATS listener started successfully")
+			fmt.Println("✅ NATS MCP listener started successfully")
 		}
 
 		// Keep NATS connection alive
