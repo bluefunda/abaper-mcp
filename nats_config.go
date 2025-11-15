@@ -80,7 +80,10 @@ func (nc *NATSConfig) Connect() (*NATSConnection, error) {
 
 	// Add credentials if provided
 	if nc.CredsFile != "" {
+		fmt.Printf("Using NATS credentials file: %s\n", nc.CredsFile)
 		opts = append(opts, nats.UserCredentials(nc.CredsFile))
+	} else {
+		fmt.Println("Warning: NATS_CREDS not set - attempting anonymous connection")
 	}
 
 	// Connect to NATS
