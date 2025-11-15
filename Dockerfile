@@ -22,6 +22,10 @@ WORKDIR /build
 
 # Copy go mod files first for better layer caching
 COPY go.mod go.sum ./
+
+# Enable auto-downloading of required Go toolchain
+ENV GOTOOLCHAIN=auto
+
 RUN go mod download
 
 # Copy source code
