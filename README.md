@@ -54,7 +54,7 @@ Pre-configured workflows for ABAP development:
 
 ### Prerequisites
 
-- Go 1.21 or higher
+- Go 1.23 or higher
 - Access to an SAP system with ADT enabled
 - SAP credentials with appropriate permissions
 
