@@ -122,7 +122,10 @@ Running in stdio mode (Claude Desktop compatible)
 | `NATS_URL` | NATS server URL | `tls://connect.ngs.global:4222` |
 | `NATS_CREDS` | **File path** to NATS credentials file (inside container) | `/etc/ngs/user.creds` |
 
-**IMPORTANT**: `NATS_CREDS` must be a **file path**, not the credentials content. The credentials file should be mounted as a volume.
+**IMPORTANT**:
+- `NATS_CREDS` must be a **file path inside the container**, not the credentials content
+- The path must reference the **mounted volume path**, not the host path
+- Example: If mounting `-v /home/admin/etc/ngs:/etc/ngs:ro`, use `/etc/ngs/user.creds` (not `/home/admin/etc/ngs/user.creds`)
 
 ### Optional NATS Configuration
 
