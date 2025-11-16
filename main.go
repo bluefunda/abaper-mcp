@@ -162,23 +162,32 @@ func runDualMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
 func runSSEMode(ctx context.Context, server *mcp.Server) {
 	port := getEnv("ABAPER_HTTP_PORT", "8015")
 	host := getEnv("ABAPER_HTTP_HOST", "0.0.0.0")
+	useLegacySSE := getEnv("ABAPER_USE_LEGACY_SSE", "true") == "true"
 
 	fmt.Printf("Running in SSE/HTTP mode (orchestrator compatible via HTTP)\n")
 
+	var handler http.Handler
+
+	if useLegacySSE {
+		// Use legacy SSE transport (2024-11-05 spec) for Claude Code compatibility
+		fmt.Println("Using legacy SSE transport for Claude Code compatibility")
+		handler = mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
+			return server
+		}, nil)
+	} else {
+		// Use modern Streamable HTTP transport (2025-03-26 spec)
+		fmt.Println("Using Streamable HTTP transport")
+		handler = mcp.NewStreamableHTTPHandler(func(req *http.Request) *mcp.Server {
+			return server
+		}, &mcp.StreamableHTTPOptions{
+			Stateless:      false,
+			JSONResponse:   false,
+			SessionTimeout: 30 * time.Minute,
+		})
+	}
+
 	// Create HTTP multiplexer for routing
 	mux := http.NewServeMux()
-
-	// Create Streamable HTTP handler for MCP protocol
-	handler := mcp.NewStreamableHTTPHandler(func(req *http.Request) *mcp.Server {
-		// Return the MCP server for all requests
-		return server
-	}, &mcp.StreamableHTTPOptions{
-		Stateless:      false, // Use sessions for connection management
-		JSONResponse:   false, // Use SSE (text/event-stream) instead of JSON
-		SessionTimeout: 30 * time.Minute,
-	})
-
-	// Mount MCP handler at root path
 	mux.Handle("/", handler)
 
 	// Add health check endpoint
