@@ -96,16 +96,14 @@ jobs:
             NEW_IMAGE="$DOCKER_USERNAME/$DOCKER_IMAGE:$VERSION_TAG"
             echo "Running new container from image: \$NEW_IMAGE"
             docker run -d \
-              -e NATS_URL=${{ secrets.NATS_URL }} \
-              -e NATS_CREDS=${{ secrets.NATS_CREDS_PRD }} \
               -e SAP_HOST=${{ secrets.SAP_HOST }} \
               -e SAP_CLIENT=${{ secrets.SAP_CLIENT }} \
               -e SAP_USERNAME=${{ secrets.SAP_USERNAME }} \
               -e SAP_PASSWORD=${{ secrets.SAP_PASSWORD }} \
-              -e ABAPER_MODE=${{ secrets.ABAPER_MODE }} \
-              -e NATS_ENABLE_KV=true \
-              -e NATS_ENABLE_MESSAGING=true \
-              -v /home/admin/etc/ngs:/etc/ngs:ro \
+              -e ABAPER_MODE=sse \
+              -e ABAPER_HTTP_PORT=8015 \
+              -e ABAPER_HTTP_HOST=0.0.0.0 \
+              -p 8015:8015 \
               --name $DOCKER_IMAGE \
               --network trm-network \
               \$NEW_IMAGE
