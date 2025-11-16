@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -80,6 +82,8 @@ func main() {
 		runNATSMode(ctx, server, handlers)
 	case "dual":
 		runDualMode(ctx, server, handlers)
+	case "sse":
+		runSSEMode(ctx, server)
 	default: // stdio
 		runStdioMode(ctx, server)
 	}
@@ -152,6 +156,47 @@ func runDualMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
 
 	// Run stdio mode in foreground
 	runStdioMode(ctx, server)
+}
+
+// runSSEMode runs the server in SSE/HTTP mode (for orchestrator via HTTP)
+func runSSEMode(ctx context.Context, server *mcp.Server) {
+	port := getEnv("ABAPER_HTTP_PORT", "8015")
+	host := getEnv("ABAPER_HTTP_HOST", "0.0.0.0")
+
+	fmt.Printf("Running in SSE/HTTP mode (orchestrator compatible via HTTP)\n")
+
+	// Create HTTP multiplexer for routing
+	mux := http.NewServeMux()
+
+	// Create Streamable HTTP handler for MCP protocol
+	handler := mcp.NewStreamableHTTPHandler(func(req *http.Request) *mcp.Server {
+		// Return the MCP server for all requests
+		return server
+	}, &mcp.StreamableHTTPOptions{
+		Stateless:      false, // Use sessions for connection management
+		JSONResponse:   false, // Use SSE (text/event-stream) instead of JSON
+		SessionTimeout: 30 * time.Minute,
+	})
+
+	// Mount MCP handler at root path
+	mux.Handle("/", handler)
+
+	// Add health check endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"healthy","version":"` + Version + `","mode":"sse"}`))
+	})
+
+	addr := fmt.Sprintf("%s:%s", host, port)
+	fmt.Printf("SSE/HTTP MCP server listening on http://%s\n", addr)
+	fmt.Printf("Health check available at http://%s/health\n", addr)
+	fmt.Println("Press Ctrl+C to exit.")
+
+	// Start HTTP server
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatalf("HTTP server error: %v", err)
+	}
 }
 
 // loadConfigFromNATS loads configuration from NATS KV store

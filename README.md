@@ -76,11 +76,21 @@ This creates an `abaper-mcp` binary in the current directory.
 
 ## Operational Modes
 
-ABAPER MCP supports three deployment modes:
+ABAPER MCP supports four deployment modes:
 
 1. **stdio** (default) - For Claude Desktop integration via standard input/output
-2. **nats** - For orchestrator integration via NATS messaging
-3. **dual** - Both stdio and NATS simultaneously
+2. **sse** - For orchestrator integration via HTTP/SSE (Server-Sent Events)
+3. **nats** - For orchestrator integration via NATS messaging (legacy)
+4. **dual** - Both stdio and NATS simultaneously (legacy)
+
+### Mode Selection
+
+Set the `ABAPER_MODE` environment variable to choose your mode:
+
+- **stdio**: Direct integration with Claude Desktop or Claude Code CLI
+- **sse**: HTTP server for orchestrator integration (recommended for production)
+- **nats**: NATS pub/sub messaging (legacy, for custom orchestrator implementations)
+- **dual**: Both stdio and NATS (legacy)
 
 See [NATS_INTEGRATION.md](NATS_INTEGRATION.md) for detailed NATS configuration.
 
@@ -97,8 +107,14 @@ SAP_CLIENT=100
 SAP_USERNAME=your-username
 SAP_PASSWORD=your-password
 
-# Optional: NATS integration
-ABAPER_MODE=stdio              # stdio, nats, or dual
+# Operational mode (default: stdio)
+ABAPER_MODE=stdio              # stdio, sse, nats, or dual
+
+# SSE/HTTP mode configuration (only needed for ABAPER_MODE=sse)
+ABAPER_HTTP_PORT=8015          # Default: 8015
+ABAPER_HTTP_HOST=0.0.0.0       # Default: 0.0.0.0
+
+# NATS integration (only needed for ABAPER_MODE=nats or dual)
 NATS_URL=tls://connect.ngs.global:4222
 NATS_CREDS=/path/to/user.creds
 NATS_ENABLE_KV=false
@@ -138,19 +154,69 @@ Add the server to your Claude Desktop configuration:
 
 After configuring, restart Claude Desktop. The ABAPER MCP server will be available for use.
 
+### With Orchestrator (SSE/HTTP Mode)
+
+For integration with orchestrators like cai-mcp-client, run the server in SSE mode:
+
+```bash
+# Set environment variables
+export ABAPER_MODE=sse
+export ABAPER_HTTP_PORT=8015
+export SAP_HOST=https://your-sap-host:8000
+export SAP_CLIENT=100
+export SAP_USERNAME=your-username
+export SAP_PASSWORD=your-password
+
+# Run the server
+./abaper-mcp
+```
+
+The server will start an HTTP server on port 8015:
+- **MCP endpoint**: `http://localhost:8015/`
+- **Health check**: `http://localhost:8015/health`
+
+#### Docker Deployment
+
+```bash
+docker run -d \
+  -e ABAPER_MODE=sse \
+  -e ABAPER_HTTP_PORT=8015 \
+  -e SAP_HOST=https://your-sap-host:8000 \
+  -e SAP_CLIENT=100 \
+  -e SAP_USERNAME=your-username \
+  -e SAP_PASSWORD=your-password \
+  -p 8015:8015 \
+  --name abaper-mcp \
+  --network your-network \
+  bluefunda/abaper-mcp:latest
+```
+
+#### Orchestrator Configuration
+
+Configure your orchestrator (e.g., cai-mcp-client) to connect to the SSE endpoint:
+
+```python
+# Example orchestrator configuration
+mcp_servers = {
+    "abaper": {
+        "mcp_server_url": "http://abaper-mcp:8015/"
+    }
+}
+```
+
 ### Standalone Testing
 
 Run the server directly for testing:
 
 ```bash
-# Using make
-make run
-
-# Or directly
+# stdio mode (default)
 ./abaper-mcp
+
+# SSE/HTTP mode
+ABAPER_MODE=sse ABAPER_HTTP_PORT=8015 ./abaper-mcp
 ```
 
-The server communicates via stdio using the MCP protocol.
+The server communicates via stdio (default) or HTTP/SSE depending on the mode.
 
 ## Examples
 

@@ -100,14 +100,21 @@ RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
 # Volumes for persistent data
 VOLUME ["/var/log/abaper", "/etc/abaper", "/var/nats/creds"]
 
-# Expose stdio for MCP communication
-# MCP servers communicate via stdin/stdout, no ports needed
-# But we can add a health check port if needed in the future
+# Expose port 8015 for SSE/HTTP mode
+# - stdio mode: Uses stdin/stdout, no port needed
+# - sse mode: HTTP server on port 8015
+# - nats mode: Uses NATS connection, no port needed
+EXPOSE 8015
 
-# Health check - MCP servers don't typically have HTTP endpoints
-# This is placeholder for future monitoring capabilities
+# Health check
+# - For stdio/nats modes: Use version command
+# - For sse mode: Use /health endpoint on port 8015
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD /app/abaper-mcp --version || exit 1
+    CMD if [ "$ABAPER_MODE" = "sse" ]; then \
+            curl -f http://localhost:8015/health || exit 1; \
+        else \
+            /app/abaper-mcp --version || exit 1; \
+        fi
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--", "/app/entrypoint.sh"]
