@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/bluefunda/abaper/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -49,6 +51,30 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 	}, handlers.HandleCreateClass)
 }
 
+// getClientWithRetry attempts to get an ADT client with automatic retry logic
+func (h *Handlers) getClientWithRetry(maxRetries int) (types.ADTClient, error) {
+	var client types.ADTClient
+	var err error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		client, err = h.clientManager.GetClient()
+		if err == nil {
+			return client, nil
+		}
+
+		if attempt < maxRetries {
+			log.Printf("ADT connection attempt %d/%d failed: %v", attempt+1, maxRetries+1, err)
+			h.clientManager.Reset() // Clear failed client
+			// Exponential backoff: 1s, 2s, 3s...
+			backoffDuration := time.Duration(attempt+1) * time.Second
+			log.Printf("Retrying in %v...", backoffDuration)
+			time.Sleep(backoffDuration)
+		}
+	}
+
+	return nil, fmt.Errorf("failed after %d attempts: %w", maxRetries+1, err)
+}
+
 // GetObjectInput defines input for get-object tool
 type GetObjectInput struct {
 	ObjectType    string `json:"object_type" jsonschema:"Type of ABAP object (program/class/function/interface/table/structure)"`
@@ -66,7 +92,7 @@ type GetObjectOutput struct {
 
 // HandleGetObject retrieves ABAP object source code
 func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest, input GetObjectInput) (*mcp.CallToolResult, GetObjectOutput, error) {
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -131,7 +157,7 @@ type ObjectInfo struct {
 
 // HandleSearchObjects searches for ABAP objects
 func (h *Handlers) HandleSearchObjects(ctx context.Context, req *mcp.CallToolRequest, input SearchObjectsInput) (*mcp.CallToolResult, SearchObjectsOutput, error) {
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true}, SearchObjectsOutput{}, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -178,7 +204,7 @@ type PackageInfo struct {
 
 // HandleListPackages lists ABAP packages
 func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequest, input ListPackagesInput) (*mcp.CallToolResult, ListPackagesOutput, error) {
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true}, ListPackagesOutput{}, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -217,7 +243,7 @@ type TestConnectionOutput struct {
 
 // HandleTestConnection tests ADT connection
 func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRequest, input TestConnectionInput) (*mcp.CallToolResult, TestConnectionOutput, error) {
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return nil, TestConnectionOutput{
 			Connected: false,
@@ -256,7 +282,7 @@ type CreateProgramOutput struct {
 
 // HandleCreateProgram creates a new ABAP program
 func (h *Handlers) HandleCreateProgram(ctx context.Context, req *mcp.CallToolRequest, input CreateProgramInput) (*mcp.CallToolResult, CreateProgramOutput, error) {
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true}, CreateProgramOutput{}, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -294,7 +320,7 @@ type CreateClassOutput struct {
 
 // HandleCreateClass creates a new ABAP class
 func (h *Handlers) HandleCreateClass(ctx context.Context, req *mcp.CallToolRequest, input CreateClassInput) (*mcp.CallToolResult, CreateClassOutput, error) {
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true}, CreateClassOutput{}, fmt.Errorf("failed to get ADT client: %w", err)
 	}
