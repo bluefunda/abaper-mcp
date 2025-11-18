@@ -82,7 +82,7 @@ func (h *Handlers) HandleProgramResource(ctx context.Context, req *mcp.ReadResou
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -110,7 +110,7 @@ func (h *Handlers) HandleClassResource(ctx context.Context, req *mcp.ReadResourc
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -150,7 +150,7 @@ func (h *Handlers) HandleInterfaceResource(ctx context.Context, req *mcp.ReadRes
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -178,7 +178,7 @@ func (h *Handlers) HandleTableResource(ctx context.Context, req *mcp.ReadResourc
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -206,7 +206,7 @@ func (h *Handlers) HandleStructureResource(ctx context.Context, req *mcp.ReadRes
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -234,7 +234,7 @@ func (h *Handlers) HandleIncludeResource(ctx context.Context, req *mcp.ReadResou
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ADT client: %w", err)
 	}
@@ -257,7 +257,7 @@ func (h *Handlers) HandleIncludeResource(ctx context.Context, req *mcp.ReadResou
 
 // HandlePackagesResource handles packages list resource
 func (h *Handlers) HandlePackagesResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	client, err := h.clientManager.GetClient()
+	client, err := h.getClientWithRetry(2) // Retry up to 2 times (3 total attempts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ADT client: %w", err)
 	}
