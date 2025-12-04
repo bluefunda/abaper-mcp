@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/bluefunda/abaper/lib"
 	"github.com/bluefunda/abaper/types"
@@ -30,11 +29,10 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// ClientManager manages ADT client connections with caching
+// ClientManager manages ADT client connections
+// In SSE mode, we create a fresh connection for each request to avoid session timeout issues
 type ClientManager struct {
 	config *Config
-	client types.ADTClient
-	mu     sync.RWMutex
 }
 
 // NewClientManager creates a new client manager
@@ -44,29 +42,17 @@ func NewClientManager(config *Config) *ClientManager {
 	}
 }
 
-// GetClient returns a cached ADT client or creates a new one
+// GetClient creates a fresh ADT client for each request
+// This ensures we never have stale session issues in SSE mode where requests
+// can come after long idle periods
 func (cm *ClientManager) GetClient() (types.ADTClient, error) {
-	cm.mu.RLock()
-	if cm.client != nil {
-		cm.mu.RUnlock()
-		return cm.client, nil
-	}
-	cm.mu.RUnlock()
-
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	// Double-check after acquiring write lock
-	if cm.client != nil {
-		return cm.client, nil
-	}
-
 	// Validate configuration
 	if err := cm.config.Validate(); err != nil {
 		return nil, err
 	}
 
-	// Create new client
+	// Always create a fresh client - no caching
+	// This avoids SAP session timeout issues when requests come after idle periods
 	client, err := lib.CreateADTClient(
 		cm.config.ADTHost,
 		cm.config.ADTClient,
@@ -77,13 +63,11 @@ func (cm *ClientManager) GetClient() (types.ADTClient, error) {
 		return nil, fmt.Errorf("failed to create ADT client: %w", err)
 	}
 
-	cm.client = client
 	return client, nil
 }
 
-// Reset clears the cached client
+// Reset is a no-op since we don't cache clients anymore
+// Kept for API compatibility
 func (cm *ClientManager) Reset() {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	cm.client = nil
+	// No-op - we don't cache clients anymore
 }

@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
-	"time"
 
 	"github.com/bluefunda/abaper/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -51,80 +49,10 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 	}, handlers.HandleCreateClass)
 }
 
-// isSessionError checks if an error indicates a session timeout or authentication failure
-// that can be resolved by reconnecting
-func isSessionError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "session timed out") ||
-		strings.Contains(errStr, "session timeout") ||
-		strings.Contains(errStr, "session expired") ||
-		strings.Contains(errStr, "session may have expired") ||
-		strings.Contains(errStr, "401") ||
-		strings.Contains(errStr, "unauthorized") ||
-		strings.Contains(errStr, "authentication failed")
-}
-
-// getClientWithRetry attempts to get an ADT client with automatic retry logic
-func (h *Handlers) getClientWithRetry(maxRetries int) (types.ADTClient, error) {
-	var client types.ADTClient
-	var err error
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		client, err = h.clientManager.GetClient()
-		if err == nil {
-			return client, nil
-		}
-
-		if attempt < maxRetries {
-			log.Printf("ADT connection attempt %d/%d failed: %v", attempt+1, maxRetries+1, err)
-			h.clientManager.Reset() // Clear failed client
-			// Exponential backoff: 1s, 2s, 3s...
-			backoffDuration := time.Duration(attempt+1) * time.Second
-			log.Printf("Retrying in %v...", backoffDuration)
-			time.Sleep(backoffDuration)
-		}
-	}
-
-	return nil, fmt.Errorf("failed after %d attempts: %w", maxRetries+1, err)
-}
-
-// executeWithSessionRetry executes an operation and retries with a fresh connection if session errors occur
-func (h *Handlers) executeWithSessionRetry(operation func(client types.ADTClient) error) error {
-	maxRetries := 2
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		client, err := h.clientManager.GetClient()
-		if err != nil {
-			if attempt < maxRetries {
-				log.Printf("Failed to get client (attempt %d/%d): %v", attempt+1, maxRetries+1, err)
-				h.clientManager.Reset()
-				time.Sleep(time.Duration(attempt+1) * time.Second)
-				continue
-			}
-			return fmt.Errorf("failed to get ADT client after %d attempts: %w", maxRetries+1, err)
-		}
-
-		err = operation(client)
-		if err == nil {
-			return nil
-		}
-
-		// Check if this is a session-related error that can be fixed by reconnecting
-		if isSessionError(err) && attempt < maxRetries {
-			log.Printf("Session error detected (attempt %d/%d): %v", attempt+1, maxRetries+1, err)
-			log.Printf("Resetting client and retrying with fresh connection...")
-			h.clientManager.Reset()
-			time.Sleep(time.Duration(attempt+1) * time.Second)
-			continue
-		}
-
-		return err
-	}
-
-	return fmt.Errorf("operation failed after %d attempts", maxRetries+1)
+// getClient creates a fresh ADT client for the operation
+// Each request gets a new connection to avoid session timeout issues
+func (h *Handlers) getClient() (types.ADTClient, error) {
+	return h.clientManager.GetClient()
 }
 
 // GetObjectInput defines input for get-object tool
@@ -165,28 +93,29 @@ func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
 	}
 
-	var source *types.ADTSourceCode
+	// Get fresh client for this request
+	client, err := h.getClient()
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("failed to connect: %w", err)
+	}
 
-	err := h.executeWithSessionRetry(func(client types.ADTClient) error {
-		var getErr error
-		switch objectType {
-		case "program", "prog":
-			source, getErr = client.GetProgram(input.ObjectName)
-		case "class", "clas":
-			source, getErr = client.GetClass(input.ObjectName)
-		case "function", "func":
-			source, getErr = client.GetFunction(input.ObjectName, input.FunctionGroup)
-		case "interface", "intf":
-			source, getErr = client.GetInterface(input.ObjectName)
-		case "table", "tabl":
-			source, getErr = client.GetTable(input.ObjectName)
-		case "structure", "stru":
-			source, getErr = client.GetStructure(input.ObjectName)
-		case "include", "incl":
-			source, getErr = client.GetInclude(input.ObjectName)
-		}
-		return getErr
-	})
+	var source *types.ADTSourceCode
+	switch objectType {
+	case "program", "prog":
+		source, err = client.GetProgram(input.ObjectName)
+	case "class", "clas":
+		source, err = client.GetClass(input.ObjectName)
+	case "function", "func":
+		source, err = client.GetFunction(input.ObjectName, input.FunctionGroup)
+	case "interface", "intf":
+		source, err = client.GetInterface(input.ObjectName)
+	case "table", "tabl":
+		source, err = client.GetTable(input.ObjectName)
+	case "structure", "stru":
+		source, err = client.GetStructure(input.ObjectName)
+	case "include", "incl":
+		source, err = client.GetInclude(input.ObjectName)
+	}
 
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("failed to get object: %w", err)
@@ -223,14 +152,13 @@ type ObjectInfo struct {
 
 // HandleSearchObjects searches for ABAP objects
 func (h *Handlers) HandleSearchObjects(ctx context.Context, req *mcp.CallToolRequest, input SearchObjectsInput) (*mcp.CallToolResult, SearchObjectsOutput, error) {
-	var results *types.ADTSearchResult
+	// Get fresh client for this request
+	client, err := h.getClient()
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true}, SearchObjectsOutput{}, fmt.Errorf("failed to connect: %w", err)
+	}
 
-	err := h.executeWithSessionRetry(func(client types.ADTClient) error {
-		var searchErr error
-		results, searchErr = client.SearchObjects(input.Pattern, input.ObjectTypes)
-		return searchErr
-	})
-
+	results, err := client.SearchObjects(input.Pattern, input.ObjectTypes)
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true}, SearchObjectsOutput{}, fmt.Errorf("search failed: %w", err)
 	}
@@ -272,14 +200,13 @@ type PackageInfo struct {
 
 // HandleListPackages lists ABAP packages
 func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequest, input ListPackagesInput) (*mcp.CallToolResult, ListPackagesOutput, error) {
-	var packages []types.ADTPackage
+	// Get fresh client for this request
+	client, err := h.getClient()
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true}, ListPackagesOutput{}, fmt.Errorf("failed to connect: %w", err)
+	}
 
-	err := h.executeWithSessionRetry(func(client types.ADTClient) error {
-		var listErr error
-		packages, listErr = client.ListPackages("*")
-		return listErr
-	})
-
+	packages, err := client.ListPackages("*")
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true}, ListPackagesOutput{}, fmt.Errorf("failed to list packages: %w", err)
 	}
@@ -313,10 +240,16 @@ type TestConnectionOutput struct {
 
 // HandleTestConnection tests ADT connection
 func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRequest, input TestConnectionInput) (*mcp.CallToolResult, TestConnectionOutput, error) {
-	err := h.executeWithSessionRetry(func(client types.ADTClient) error {
-		return client.TestConnection()
-	})
+	// Get fresh client for this request
+	client, err := h.getClient()
+	if err != nil {
+		return nil, TestConnectionOutput{
+			Connected: false,
+			Message:   fmt.Sprintf("Connection failed: %v", err),
+		}, nil
+	}
 
+	err = client.TestConnection()
 	if err != nil {
 		return nil, TestConnectionOutput{
 			Connected: false,
@@ -347,10 +280,17 @@ type CreateProgramOutput struct {
 
 // HandleCreateProgram creates a new ABAP program
 func (h *Handlers) HandleCreateProgram(ctx context.Context, req *mcp.CallToolRequest, input CreateProgramInput) (*mcp.CallToolResult, CreateProgramOutput, error) {
-	err := h.executeWithSessionRetry(func(client types.ADTClient) error {
-		return client.CreateProgram(input.Name, input.Description, input.Package, input.SourceCode)
-	})
+	// Get fresh client for this request
+	client, err := h.getClient()
+	if err != nil {
+		return nil, CreateProgramOutput{
+			Success: false,
+			Message: fmt.Sprintf("Failed to connect: %v", err),
+			Name:    input.Name,
+		}, nil
+	}
 
+	err = client.CreateProgram(input.Name, input.Description, input.Package, input.SourceCode)
 	if err != nil {
 		return nil, CreateProgramOutput{
 			Success: false,
@@ -383,10 +323,17 @@ type CreateClassOutput struct {
 
 // HandleCreateClass creates a new ABAP class
 func (h *Handlers) HandleCreateClass(ctx context.Context, req *mcp.CallToolRequest, input CreateClassInput) (*mcp.CallToolResult, CreateClassOutput, error) {
-	err := h.executeWithSessionRetry(func(client types.ADTClient) error {
-		return client.CreateClass(input.Name, input.Description, input.Package, input.SourceCode)
-	})
+	// Get fresh client for this request
+	client, err := h.getClient()
+	if err != nil {
+		return nil, CreateClassOutput{
+			Success: false,
+			Message: fmt.Sprintf("Failed to connect: %v", err),
+			Name:    input.Name,
+		}, nil
+	}
 
+	err = client.CreateClass(input.Name, input.Description, input.Package, input.SourceCode)
 	if err != nil {
 		return nil, CreateClassOutput{
 			Success: false,
