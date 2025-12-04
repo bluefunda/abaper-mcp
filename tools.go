@@ -47,6 +47,12 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 		Name:        "create-class",
 		Description: "Create a new ABAP class with source code",
 	}, handlers.HandleCreateClass)
+
+	// Tool: analyze-s4-remediation - Analyze ABAP code for S/4HANA compatibility
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "analyze-s4-remediation",
+		Description: "Analyze ABAP code for S/4HANA compatibility issues and provide remediation suggestions in JSON format",
+	}, handlers.HandleAnalyzeS4Remediation)
 }
 
 // getClient creates a fresh ADT client for the operation

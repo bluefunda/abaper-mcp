@@ -1,0 +1,37 @@
+{
+  "remediation_patterns": [
+    {
+      "id": "P001",
+      "title": "Obsolete ALV Function Modules",
+      "category": "Obsolete Object",
+      "symptoms": [
+        "REUSE_ALV_LIST_DISPLAY used",
+        "SLIS structures referenced"
+      ],
+      "reason": "REUSE* ALV FMs removed in S/4HANA",
+      "fix": "Replace with CL_SALV_TABLE",
+      "before_code": "CALL FUNCTION 'REUSE_ALV_LIST_DISPLAY' EXPORTING i_callback_program = sy-repid TABLES t_fieldcat = lt_fcat t_outtab = lt_data.",
+      "after_code": "cl_salv_table=>factory( IMPORTING r_salv_table = lo_alv CHANGING t_table = lt_data ). lo_alv->display( )."
+    },
+    {
+      "id": "P002",
+      "title": "Pooled/Cluster Table Removal",
+      "category": "DB Model Change",
+      "symptoms": ["SELECT on VBDATA", "SELECT on BSEG cluster"],
+      "reason": "Cluster and pooled tables removed",
+      "fix": "Use MATDOC/CDS views",
+      "before_code": "SELECT * FROM vbddata INTO TABLE lt_data.",
+      "after_code": "SELECT * FROM matdoc INTO TABLE lt_data WHERE ..."
+    },
+    {
+      "id": "P003",
+      "title": "Removed Index Tables (BSIS, BSAS)",
+      "category": "DB Model Change",
+      "symptoms": ["SELECT from BSIS/BSAS"],
+      "reason": "Replaced by ACDOCA",
+      "fix": "Use CDS I_UniversalJournal",
+      "before_code": "SELECT * FROM bsis INTO TABLE lt_bsis.",
+      "after_code": "SELECT * FROM I_UniversalJournal INTO TABLE lt_bsis WHERE ..."
+    }
+  ]
+}

@@ -4,6 +4,7 @@ go 1.24.5
 
 require (
 	github.com/bluefunda/abaper v0.0.4
+	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.1.0
 	github.com/nats-io/nats.go v1.47.0
 )
