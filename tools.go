@@ -51,7 +51,7 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 	// Tool: analyze-s4-remediation - Analyze ABAP code for S/4HANA compatibility
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "analyze-s4-remediation",
-		Description: "Analyze ABAP code for S/4HANA compatibility issues and provide remediation suggestions in JSON format",
+		Description: "Analyze ABAP code for S/4HANA compatibility issues and provide remediation suggestions. Returns both structured JSON and human-readable Markdown report formats.",
 	}, handlers.HandleAnalyzeS4Remediation)
 }
 

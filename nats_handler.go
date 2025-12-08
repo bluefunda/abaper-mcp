@@ -104,6 +104,8 @@ func (s *NATSMCPServer) routeToolRequest(ctx context.Context, req *MCPToolReques
 		return s.handleCreateProgram(ctx, req)
 	case "create-class":
 		return s.handleCreateClass(ctx, req)
+	case "analyze-s4-remediation":
+		return s.handleAnalyzeS4Remediation(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
@@ -314,6 +316,70 @@ func (s *NATSMCPServer) handleCreateClass(ctx context.Context, req *MCPToolReque
 		"success": output.Success,
 		"message": output.Message,
 		"name":    output.Name,
+	}, nil
+}
+
+// handleAnalyzeS4Remediation handles analyze-s4-remediation tool request
+func (s *NATSMCPServer) handleAnalyzeS4Remediation(ctx context.Context, req *MCPToolRequest) (map[string]interface{}, error) {
+	objectType, ok := req.Arguments["object_type"].(string)
+	if !ok {
+		return nil, fmt.Errorf("object_type is required")
+	}
+
+	objectName, ok := req.Arguments["object_name"].(string)
+	if !ok {
+		return nil, fmt.Errorf("object_name is required")
+	}
+
+	functionGroup, _ := req.Arguments["function_group"].(string)
+	outputFormat, _ := req.Arguments["output_format"].(string)
+
+	input := AnalyzeS4RemediationInput{
+		ObjectType:    objectType,
+		ObjectName:    objectName,
+		FunctionGroup: functionGroup,
+		OutputFormat:  outputFormat,
+	}
+
+	mcpReq := &mcp.CallToolRequest{}
+	_, output, err := s.handlers.HandleAnalyzeS4Remediation(ctx, mcpReq, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert issues to map slice
+	issues := make([]map[string]interface{}, len(output.JSON.Issues))
+	for i, issue := range output.JSON.Issues {
+		issues[i] = map[string]interface{}{
+			"pattern_id":      issue.PatternID,
+			"pattern_title":   issue.PatternTitle,
+			"symptom_detected": issue.SymptomDetected,
+			"severity":        issue.Severity,
+			"before_code":     issue.BeforeCode,
+			"after_code":      issue.AfterCode,
+			"fix_description": issue.FixDescription,
+		}
+	}
+
+	return map[string]interface{}{
+		"json": map[string]interface{}{
+			"run_metadata": map[string]interface{}{
+				"run_id":         output.JSON.RunMetadata.RunID,
+				"timestamp_utc":  output.JSON.RunMetadata.TimestampUTC,
+				"system_id":      output.JSON.RunMetadata.SystemID,
+				"system_release": output.JSON.RunMetadata.SystemRelease,
+				"client":         output.JSON.RunMetadata.Client,
+				"analyst":        output.JSON.RunMetadata.Analyst,
+			},
+			"artifact": map[string]interface{}{
+				"artifact_name":     output.JSON.Artifact.ArtifactName,
+				"artifact_type":     output.JSON.Artifact.ArtifactType,
+				"package":           output.JSON.Artifact.Package,
+				"transport_request": output.JSON.Artifact.TransportRequest,
+			},
+			"issues": issues,
+		},
+		"markdown": output.Markdown,
 	}, nil
 }
 
