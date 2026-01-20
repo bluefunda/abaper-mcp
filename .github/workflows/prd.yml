@@ -72,5 +72,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGE }}:${{ steps.semver.outputs.VERSION_TAG }}
-            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGE }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/abaper-mcp:${{ steps.semver.outputs.VERSION_TAG }}
+            ${{ secrets.DOCKER_USERNAME }}/abaper-mcp:latest
