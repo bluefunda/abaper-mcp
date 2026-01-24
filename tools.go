@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/bluefunda/abaper-mcp/internal/logger"
 	"github.com/bluefunda/abaper/types"
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.uber.org/zap"
 )
 
 // registerTools registers all MCP tools
@@ -78,10 +82,21 @@ type GetObjectOutput struct {
 
 // HandleGetObject retrieves ABAP object source code
 func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest, input GetObjectInput) (*mcp.CallToolResult, GetObjectOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "get-object")
+
+	log.Info("Tool execution started",
+		zap.String("object_type", input.ObjectType),
+		zap.String("object_name", input.ObjectName),
+		zap.String("function_group", input.FunctionGroup),
+	)
+
 	objectType := strings.ToLower(input.ObjectType)
 
 	// Validate function group requirement early
 	if (objectType == "function" || objectType == "func") && input.FunctionGroup == "" {
+		log.Warn("Validation failed: function_group required")
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("function_group is required for function modules")
 	}
 
@@ -96,12 +111,14 @@ func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest
 		"include": true, "incl": true,
 	}
 	if !validTypes[objectType] {
+		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
 	}
 
 	// Get fresh client for this request
 	client, err := h.getClient()
 	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err))
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("failed to connect: %w", err)
 	}
 
@@ -124,6 +141,7 @@ func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest
 	}
 
 	if err != nil {
+		log.Error("Failed to get object", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("failed to get object: %w", err)
 	}
 
@@ -132,6 +150,11 @@ func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest
 		ObjectName: input.ObjectName,
 		SourceCode: source.Source,
 	}
+
+	log.Info("Tool execution completed",
+		zap.Int("source_len", len(source.Source)),
+		zap.Duration("duration", time.Since(start)),
+	)
 
 	return nil, output, nil
 }
@@ -158,14 +181,25 @@ type ObjectInfo struct {
 
 // HandleSearchObjects searches for ABAP objects
 func (h *Handlers) HandleSearchObjects(ctx context.Context, req *mcp.CallToolRequest, input SearchObjectsInput) (*mcp.CallToolResult, SearchObjectsOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "search-objects")
+
+	log.Info("Tool execution started",
+		zap.String("pattern", input.Pattern),
+		zap.Strings("object_types", input.ObjectTypes),
+	)
+
 	// Get fresh client for this request
 	client, err := h.getClient()
 	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err))
 		return &mcp.CallToolResult{IsError: true}, SearchObjectsOutput{}, fmt.Errorf("failed to connect: %w", err)
 	}
 
 	results, err := client.SearchObjects(input.Pattern, input.ObjectTypes)
 	if err != nil {
+		log.Error("Search failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, SearchObjectsOutput{}, fmt.Errorf("search failed: %w", err)
 	}
 
@@ -183,6 +217,11 @@ func (h *Handlers) HandleSearchObjects(ctx context.Context, req *mcp.CallToolReq
 		Objects: objects,
 		Count:   len(objects),
 	}
+
+	log.Info("Tool execution completed",
+		zap.Int("results_count", len(objects)),
+		zap.Duration("duration", time.Since(start)),
+	)
 
 	return nil, output, nil
 }
@@ -206,14 +245,22 @@ type PackageInfo struct {
 
 // HandleListPackages lists ABAP packages
 func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequest, input ListPackagesInput) (*mcp.CallToolResult, ListPackagesOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "list-packages")
+
+	log.Info("Tool execution started")
+
 	// Get fresh client for this request
 	client, err := h.getClient()
 	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err))
 		return &mcp.CallToolResult{IsError: true}, ListPackagesOutput{}, fmt.Errorf("failed to connect: %w", err)
 	}
 
 	packages, err := client.ListPackages("*")
 	if err != nil {
+		log.Error("Failed to list packages", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, ListPackagesOutput{}, fmt.Errorf("failed to list packages: %w", err)
 	}
 
@@ -229,6 +276,11 @@ func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequ
 		Packages: pkgInfos,
 		Count:    len(pkgInfos),
 	}
+
+	log.Info("Tool execution completed",
+		zap.Int("packages_count", len(pkgInfos)),
+		zap.Duration("duration", time.Since(start)),
+	)
 
 	return nil, output, nil
 }
@@ -246,9 +298,16 @@ type TestConnectionOutput struct {
 
 // HandleTestConnection tests ADT connection
 func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRequest, input TestConnectionInput) (*mcp.CallToolResult, TestConnectionOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "test-connection")
+
+	log.Info("Tool execution started")
+
 	// Get fresh client for this request
 	client, err := h.getClient()
 	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, TestConnectionOutput{
 			Connected: false,
 			Message:   fmt.Sprintf("Connection failed: %v", err),
@@ -257,11 +316,17 @@ func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRe
 
 	err = client.TestConnection()
 	if err != nil {
+		log.Warn("Connection test failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, TestConnectionOutput{
 			Connected: false,
 			Message:   fmt.Sprintf("Connection failed: %v", err),
 		}, nil
 	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("connected", true),
+		zap.Duration("duration", time.Since(start)),
+	)
 
 	return nil, TestConnectionOutput{
 		Connected: true,
@@ -286,9 +351,20 @@ type CreateProgramOutput struct {
 
 // HandleCreateProgram creates a new ABAP program
 func (h *Handlers) HandleCreateProgram(ctx context.Context, req *mcp.CallToolRequest, input CreateProgramInput) (*mcp.CallToolResult, CreateProgramOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "create-program")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.String("package", input.Package),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
 	// Get fresh client for this request
 	client, err := h.getClient()
 	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateProgramOutput{
 			Success: false,
 			Message: fmt.Sprintf("Failed to connect: %v", err),
@@ -298,12 +374,18 @@ func (h *Handlers) HandleCreateProgram(ctx context.Context, req *mcp.CallToolReq
 
 	err = client.CreateProgram(input.Name, input.Description, input.Package, input.SourceCode)
 	if err != nil {
+		log.Error("Failed to create program", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateProgramOutput{
 			Success: false,
 			Message: fmt.Sprintf("Failed to create program: %v", err),
 			Name:    input.Name,
 		}, nil
 	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
 
 	return nil, CreateProgramOutput{
 		Success: true,
@@ -329,9 +411,20 @@ type CreateClassOutput struct {
 
 // HandleCreateClass creates a new ABAP class
 func (h *Handlers) HandleCreateClass(ctx context.Context, req *mcp.CallToolRequest, input CreateClassInput) (*mcp.CallToolResult, CreateClassOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "create-class")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.String("package", input.Package),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
 	// Get fresh client for this request
 	client, err := h.getClient()
 	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateClassOutput{
 			Success: false,
 			Message: fmt.Sprintf("Failed to connect: %v", err),
@@ -341,12 +434,18 @@ func (h *Handlers) HandleCreateClass(ctx context.Context, req *mcp.CallToolReque
 
 	err = client.CreateClass(input.Name, input.Description, input.Package, input.SourceCode)
 	if err != nil {
+		log.Error("Failed to create class", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateClassOutput{
 			Success: false,
 			Message: fmt.Sprintf("Failed to create class: %v", err),
 			Name:    input.Name,
 		}, nil
 	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
 
 	return nil, CreateClassOutput{
 		Success: true,

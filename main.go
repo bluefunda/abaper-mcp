@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/bluefunda/abaper-mcp/internal/logger"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.uber.org/zap"
 )
 
 // Version information (set via ldflags during build)
@@ -27,9 +28,23 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Initialize structured logging
+	logLevel := getEnv("LOG_LEVEL", "info")
+	logFormat := getEnv("LOG_FORMAT", "json") // json or console
+	logger.Init(logger.Config{
+		Level:      logLevel,
+		Format:     logFormat,
+		ServerName: "abaper-mcp",
+		Version:    Version,
+	})
+	defer logger.Sync()
+
 	// Determine mode: stdio (default) or nats
 	mode := getEnv("ABAPER_MODE", "stdio")
-	fmt.Printf("Starting ABAPER MCP server in %s mode\n", mode)
+	logger.L.Info("Starting ABAPER MCP server",
+		zap.String("mode", mode),
+		zap.String("log_level", logLevel),
+	)
 
 	// Create MCP server
 	server := mcp.NewServer(
@@ -51,14 +66,15 @@ func main() {
 	// Try to load config from NATS KV if enabled
 	if getEnv("NATS_ENABLE_KV", "false") == "true" {
 		if sapConfig, err := loadConfigFromNATS(); err == nil {
-			fmt.Println("Loaded SAP configuration from NATS KV")
+			logger.L.Info("Loaded SAP configuration from NATS KV")
 			config.ADTHost = sapConfig.Host
 			config.ADTClient = sapConfig.Client
 			config.ADTUsername = sapConfig.Username
 			config.ADTPassword = sapConfig.Password
 		} else {
-			fmt.Printf("Warning: Failed to load config from NATS KV: %v\n", err)
-			fmt.Println("Falling back to environment variables")
+			logger.L.Warn("Failed to load config from NATS KV, falling back to environment variables",
+				zap.Error(err),
+			)
 		}
 	}
 
@@ -91,15 +107,15 @@ func main() {
 
 // runStdioMode runs the server in stdio mode (Claude Desktop)
 func runStdioMode(ctx context.Context, server *mcp.Server) {
-	fmt.Println("Running in stdio mode (Claude Desktop compatible)")
+	logger.L.Info("Running in stdio mode (Claude Desktop compatible)")
 	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil {
-		log.Fatalf("Server error: %v", err)
+		logger.L.Fatal("Server error", zap.Error(err))
 	}
 }
 
 // runNATSMode runs the server in NATS-only mode (orchestrator)
 func runNATSMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
-	fmt.Println("Running in NATS mode (orchestrator compatible)")
+	logger.L.Info("Running in NATS mode (orchestrator compatible)")
 
 	// Create NATS configuration
 	natsConfig := NewNATSConfig()
@@ -108,26 +124,28 @@ func runNATSMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
 	// Connect to NATS
 	natsConn, err := natsConfig.Connect()
 	if err != nil {
-		log.Fatalf("Failed to connect to NATS: %v", err)
+		logger.L.Fatal("Failed to connect to NATS", zap.Error(err))
 	}
 	defer natsConn.Close()
+
+	logger.L.Info("Connected to NATS server")
 
 	// Create NATS MCP server
 	natsMCP := NewNATSMCPServer(natsConn, handlers, server)
 
 	// Start listening for requests
 	if err := natsMCP.Start(); err != nil {
-		log.Fatalf("Failed to start NATS MCP server: %v", err)
+		logger.L.Fatal("Failed to start NATS MCP server", zap.Error(err))
 	}
 
 	// Keep running
-	fmt.Println("NATS MCP server is running. Press Ctrl+C to exit.")
+	logger.L.Info("NATS MCP server is running")
 	select {}
 }
 
 // runDualMode runs the server in both stdio and NATS modes
 func runDualMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
-	fmt.Println("Running in dual mode (stdio + NATS)")
+	logger.L.Info("Running in dual mode (stdio + NATS)")
 
 	// Start NATS mode in background
 	go func() {
@@ -137,17 +155,18 @@ func runDualMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
 
 		natsConn, err := natsConfig.Connect()
 		if err != nil {
-			fmt.Printf("Warning: Failed to connect to NATS for messaging: %v\n", err)
-			fmt.Println("Continuing with stdio mode only")
+			logger.L.Warn("Failed to connect to NATS for messaging, continuing with stdio mode only",
+				zap.Error(err),
+			)
 			return
 		}
 		defer natsConn.Close()
 
 		natsMCP := NewNATSMCPServer(natsConn, handlers, server)
 		if err := natsMCP.Start(); err != nil {
-			fmt.Printf("Warning: Failed to start NATS MCP server: %v\n", err)
+			logger.L.Warn("Failed to start NATS MCP server", zap.Error(err))
 		} else {
-			fmt.Println("✅ NATS MCP listener started successfully")
+			logger.L.Info("NATS MCP listener started successfully")
 		}
 
 		// Keep NATS connection alive
@@ -164,20 +183,32 @@ func runSSEMode(ctx context.Context, server *mcp.Server) {
 	host := getEnv("ABAPER_HTTP_HOST", "0.0.0.0")
 	useLegacySSE := getEnv("ABAPER_USE_LEGACY_SSE", "true") == "true"
 
-	fmt.Printf("Running in SSE/HTTP mode (orchestrator compatible via HTTP)\n")
+	logger.L.Info("Running in SSE/HTTP mode",
+		zap.String("host", host),
+		zap.String("port", port),
+		zap.Bool("legacy_sse", useLegacySSE),
+	)
 
 	var handler http.Handler
 
 	if useLegacySSE {
-		// Use legacy SSE transport (2024-11-05 spec) for Claude Code compatibility
-		fmt.Println("Using legacy SSE transport for Claude Code compatibility")
+		logger.L.Info("Using legacy SSE transport for Claude Code compatibility")
 		handler = mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
+			logger.L.Debug("SSE client connected",
+				zap.String("remote_addr", req.RemoteAddr),
+				zap.String("method", req.Method),
+				zap.String("path", req.URL.Path),
+			)
 			return server
 		}, nil)
 	} else {
-		// Use modern Streamable HTTP transport (2025-03-26 spec)
-		fmt.Println("Using Streamable HTTP transport")
+		logger.L.Info("Using Streamable HTTP transport")
 		handler = mcp.NewStreamableHTTPHandler(func(req *http.Request) *mcp.Server {
+			logger.L.Debug("HTTP client connected",
+				zap.String("remote_addr", req.RemoteAddr),
+				zap.String("method", req.Method),
+				zap.String("path", req.URL.Path),
+			)
 			return server
 		}, &mcp.StreamableHTTPOptions{
 			Stateless:      false,
@@ -198,13 +229,14 @@ func runSSEMode(ctx context.Context, server *mcp.Server) {
 	})
 
 	addr := fmt.Sprintf("%s:%s", host, port)
-	fmt.Printf("SSE/HTTP MCP server listening on http://%s\n", addr)
-	fmt.Printf("Health check available at http://%s/health\n", addr)
-	fmt.Println("Press Ctrl+C to exit.")
+	logger.L.Info("SSE/HTTP MCP server listening",
+		zap.String("address", "http://"+addr),
+		zap.String("health_check", "http://"+addr+"/health"),
+	)
 
 	// Start HTTP server
 	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("HTTP server error: %v", err)
+		logger.L.Fatal("HTTP server error", zap.Error(err))
 	}
 }
 

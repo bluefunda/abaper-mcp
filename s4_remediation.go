@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bluefunda/abaper-mcp/internal/logger"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.uber.org/zap"
 )
 
 //go:embed s4_remediation_patterns.json
@@ -383,10 +385,21 @@ func generateMarkdownReport(result S4RemediationResult) string {
 
 // HandleAnalyzeS4Remediation analyzes ABAP code for S/4HANA compatibility issues
 func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.CallToolRequest, input AnalyzeS4RemediationInput) (*mcp.CallToolResult, S4RemediationOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "analyze-s4-remediation")
+
+	log.Info("Tool execution started",
+		zap.String("object_type", input.ObjectType),
+		zap.String("object_name", input.ObjectName),
+		zap.String("output_format", input.OutputFormat),
+	)
+
 	objectType := strings.ToLower(input.ObjectType)
 
 	// Validate function group requirement
 	if (objectType == "function" || objectType == "func") && input.FunctionGroup == "" {
+		log.Warn("Validation failed: function_group required")
 		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("function_group is required for function modules")
 	}
 
@@ -399,12 +412,14 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 		"include": true, "incl": true,
 	}
 	if !validTypes[objectType] {
+		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
 		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
 	}
 
 	// Get fresh client
 	client, err := h.getClient()
 	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err))
 		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to connect: %w", err)
 	}
 
@@ -498,6 +513,11 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 		JSON:     result,
 		Markdown: markdownReport,
 	}
+
+	log.Info("Tool execution completed",
+		zap.Int("issues_found", len(issues)),
+		zap.Duration("duration", time.Since(start)),
+	)
 
 	return nil, output, nil
 }
