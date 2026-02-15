@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -454,11 +453,3 @@ func (h *Handlers) HandleCreateClass(ctx context.Context, req *mcp.CallToolReque
 	}, nil
 }
 
-// marshalJSON is a helper to convert output to JSON for text content
-func marshalJSON(v interface{}) string {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return fmt.Sprintf("Error marshaling output: %v", err)
-	}
-	return string(data)
-}

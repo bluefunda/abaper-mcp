@@ -15,8 +15,17 @@ ARG BUILD_TIME
 ARG GIT_COMMIT
 ARG TARGETARCH
 
+# Build argument for private Go modules
+ARG GH_PAT
+
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates
+
+# Configure Git for private modules
+RUN if [ -n "$GH_PAT" ]; then \
+      git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"; \
+    fi
+ENV GOPRIVATE=github.com/bluefunda/*
 
 # Set working directory
 WORKDIR /build

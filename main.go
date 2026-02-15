@@ -31,7 +31,7 @@ func main() {
 	// Initialize structured logging
 	logLevel := getEnv("LOG_LEVEL", "info")
 	logFormat := getEnv("LOG_FORMAT", "json") // json or console
-	logger.Init(logger.Config{
+	_ = logger.Init(logger.Config{
 		Level:      logLevel,
 		Format:     logFormat,
 		ServerName: "abaper-mcp",
@@ -225,7 +225,7 @@ func runSSEMode(ctx context.Context, server *mcp.Server) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"healthy","version":"` + Version + `","mode":"sse"}`))
+		_, _ = w.Write([]byte(`{"status":"healthy","version":"` + Version + `","mode":"sse"}`))
 	})
 
 	addr := fmt.Sprintf("%s:%s", host, port)

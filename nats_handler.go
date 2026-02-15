@@ -408,7 +408,7 @@ func (s *NATSMCPServer) sendSuccessResponse(msg *nats.Msg, requestID string, res
 	// Also publish to response subject if extractable from request subject
 	responseSubject := s.getResponseSubject(msg.Subject)
 	if responseSubject != "" {
-		s.natsConn.Publish(responseSubject, data)
+		_ = s.natsConn.Publish(responseSubject, data)
 	}
 }
 
@@ -425,13 +425,13 @@ func (s *NATSMCPServer) sendErrorResponse(msg *nats.Msg, requestID string, err e
 
 	// Reply to the request
 	if msg.Reply != "" {
-		msg.Respond(data)
+		_ = msg.Respond(data)
 	}
 
 	// Also publish to response subject
 	responseSubject := s.getResponseSubject(msg.Subject)
 	if responseSubject != "" {
-		s.natsConn.Publish(responseSubject, data)
+		_ = s.natsConn.Publish(responseSubject, data)
 	}
 }
 
@@ -442,12 +442,3 @@ func (s *NATSMCPServer) getResponseSubject(requestSubject string) string {
 	return strings.Replace(requestSubject, ".request", ".response", 1)
 }
 
-// extractRealm extracts realm from NATS subject
-func extractRealm(subject string) string {
-	parts := strings.Split(subject, ".")
-	if len(parts) >= 4 && parts[0] == "mcp" {
-		// Format: mcp.<realm>.abaper.tools.request
-		return parts[1]
-	}
-	return ""
-}
