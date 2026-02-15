@@ -289,8 +289,8 @@ func generateMarkdownReport(result S4RemediationResult) string {
 
 	// Run Metadata
 	sb.WriteString("## Run Information\n\n")
-	sb.WriteString(fmt.Sprintf("| Field | Value |\n"))
-	sb.WriteString(fmt.Sprintf("|-------|-------|\n"))
+	sb.WriteString("| Field | Value |\n")
+	sb.WriteString("|-------|-------|\n")
 	sb.WriteString(fmt.Sprintf("| **Run ID** | `%s` |\n", result.RunMetadata.RunID))
 	sb.WriteString(fmt.Sprintf("| **Timestamp (UTC)** | %s |\n", result.RunMetadata.TimestampUTC))
 	sb.WriteString(fmt.Sprintf("| **System ID** | %s |\n", result.RunMetadata.SystemID))
@@ -300,8 +300,8 @@ func generateMarkdownReport(result S4RemediationResult) string {
 
 	// Artifact Information
 	sb.WriteString("## Analyzed Artifact\n\n")
-	sb.WriteString(fmt.Sprintf("| Field | Value |\n"))
-	sb.WriteString(fmt.Sprintf("|-------|-------|\n"))
+	sb.WriteString("| Field | Value |\n")
+	sb.WriteString("|-------|-------|\n")
 	sb.WriteString(fmt.Sprintf("| **Name** | `%s` |\n", result.Artifact.ArtifactName))
 	sb.WriteString(fmt.Sprintf("| **Type** | %s |\n", result.Artifact.ArtifactType))
 	if result.Artifact.Package != "" {

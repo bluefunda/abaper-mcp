@@ -141,7 +141,7 @@ func (nc *NATSConfig) Connect() (*NATSConnection, error) {
 // Close closes the NATS connection
 func (nc *NATSConnection) Close() {
 	if nc.nc != nil {
-		nc.nc.Drain()
+		_ = nc.nc.Drain()
 		nc.nc.Close()
 		fmt.Println("NATS connection closed")
 	}
