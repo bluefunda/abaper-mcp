@@ -13,6 +13,8 @@ type Config struct {
 	ADTClient   string
 	ADTUsername string
 	ADTPassword string
+	NATSUrl     string
+	NATSCred    string
 }
 
 // Validate ensures all required configuration is present
