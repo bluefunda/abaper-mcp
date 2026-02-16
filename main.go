@@ -63,9 +63,18 @@ func main() {
 		ADTPassword: getEnv("SAP_PASSWORD", ""),
 	}
 
+	// Load secrets from Vault if available (overrides env vars)
+	if os.Getenv("VAULT_ADDR") != "" && os.Getenv("VAULT_TOKEN") != "" {
+		if err := config.loadSecretsFromVault(); err != nil {
+			logger.L.Warn("Vault unavailable, falling back to env vars", zap.Error(err))
+		} else {
+			logger.L.Info("Vault secrets loaded successfully")
+		}
+	}
+
 	// Try to load config from NATS KV if enabled
 	if getEnv("NATS_ENABLE_KV", "false") == "true" {
-		if sapConfig, err := loadConfigFromNATS(); err == nil {
+		if sapConfig, err := loadConfigFromNATS(config); err == nil {
 			logger.L.Info("Loaded SAP configuration from NATS KV")
 			config.ADTHost = sapConfig.Host
 			config.ADTClient = sapConfig.Client
@@ -95,9 +104,9 @@ func main() {
 	// Run in appropriate mode
 	switch mode {
 	case "nats":
-		runNATSMode(ctx, server, handlers)
+		runNATSMode(ctx, server, handlers, config)
 	case "dual":
-		runDualMode(ctx, server, handlers)
+		runDualMode(ctx, server, handlers, config)
 	case "sse":
 		runSSEMode(ctx, server)
 	default: // stdio
@@ -113,12 +122,24 @@ func runStdioMode(ctx context.Context, server *mcp.Server) {
 	}
 }
 
+// newNATSConfigWithOverrides creates a NATSConfig with Vault-provided overrides applied.
+func newNATSConfigWithOverrides(config *Config) *NATSConfig {
+	natsConfig := NewNATSConfig()
+	if config.NATSUrl != "" {
+		natsConfig.URL = config.NATSUrl
+	}
+	if config.NATSCred != "" {
+		natsConfig.CredsFile = config.NATSCred
+	}
+	return natsConfig
+}
+
 // runNATSMode runs the server in NATS-only mode (orchestrator)
-func runNATSMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
+func runNATSMode(ctx context.Context, server *mcp.Server, handlers *Handlers, config *Config) {
 	logger.L.Info("Running in NATS mode (orchestrator compatible)")
 
 	// Create NATS configuration
-	natsConfig := NewNATSConfig()
+	natsConfig := newNATSConfigWithOverrides(config)
 	natsConfig.EnableMessaging = true
 
 	// Connect to NATS
@@ -144,12 +165,12 @@ func runNATSMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
 }
 
 // runDualMode runs the server in both stdio and NATS modes
-func runDualMode(ctx context.Context, server *mcp.Server, handlers *Handlers) {
+func runDualMode(ctx context.Context, server *mcp.Server, handlers *Handlers, config *Config) {
 	logger.L.Info("Running in dual mode (stdio + NATS)")
 
 	// Start NATS mode in background
 	go func() {
-		natsConfig := NewNATSConfig()
+		natsConfig := newNATSConfigWithOverrides(config)
 		natsConfig.EnableMessaging = true
 		natsConfig.EnableKV = false // Disable KV for messaging-only connection
 
@@ -241,8 +262,8 @@ func runSSEMode(ctx context.Context, server *mcp.Server) {
 }
 
 // loadConfigFromNATS loads configuration from NATS KV store
-func loadConfigFromNATS() (*SAPConfig, error) {
-	natsConfig := NewNATSConfig()
+func loadConfigFromNATS(config *Config) (*SAPConfig, error) {
+	natsConfig := newNATSConfigWithOverrides(config)
 	natsConfig.EnableKV = true
 
 	natsConn, err := natsConfig.Connect()

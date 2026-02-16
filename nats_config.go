@@ -42,7 +42,7 @@ type SAPConfig struct {
 func NewNATSConfig() *NATSConfig {
 	url := os.Getenv("NATS_URL")
 	if url == "" {
-		url = "tls://connect.ngs.global:4222" // Default NATS Cloud
+		url = "tls://connect.ngs.global:4222" // Default Synadia NGS
 	}
 
 	return &NATSConfig{
