@@ -56,6 +56,30 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 		Name:        "analyze-s4-remediation",
 		Description: "Analyze ABAP code for S/4HANA compatibility issues and provide remediation suggestions. Returns both structured JSON and human-readable Markdown report formats.",
 	}, handlers.HandleAnalyzeS4Remediation)
+
+	// Tool: activate-object - Activate an ABAP object
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "activate-object",
+		Description: "Activate an ABAP object (program, class, interface, function group, include). Must be called before running unit tests.",
+	}, handlers.HandleActivateObject)
+
+	// Tool: run-unit-tests - Run ABAP unit tests
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "run-unit-tests",
+		Description: "Run ABAP unit tests for an object and return pass/fail results with detailed test method outcomes.",
+	}, handlers.HandleRunUnitTests)
+
+	// Tool: update-program - Update existing ABAP program source
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update-program",
+		Description: "Update the source code of an existing ABAP program. Provide complete source code, not diffs.",
+	}, handlers.HandleUpdateProgram)
+
+	// Tool: update-class - Update existing ABAP class source
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update-class",
+		Description: "Update the source code of an existing ABAP class. Provide complete source code, not diffs.",
+	}, handlers.HandleUpdateClass)
 }
 
 // getClient creates a fresh ADT client for the operation
@@ -389,6 +413,305 @@ func (h *Handlers) HandleCreateProgram(ctx context.Context, req *mcp.CallToolReq
 	return nil, CreateProgramOutput{
 		Success: true,
 		Message: "Program created successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// ActivateObjectInput defines input for activate-object tool
+type ActivateObjectInput struct {
+	ObjectType string `json:"object_type" jsonschema:"Type of ABAP object (program/class/interface/include/function_group)"`
+	ObjectName string `json:"object_name" jsonschema:"Name of the ABAP object to activate"`
+}
+
+// ActivateObjectOutput defines output for activate-object tool
+type ActivateObjectOutput struct {
+	Success    bool   `json:"success" jsonschema:"Whether activation was successful"`
+	Message    string `json:"message" jsonschema:"Result message with any warnings or errors"`
+	ObjectName string `json:"object_name" jsonschema:"Activated object name"`
+	ObjectType string `json:"object_type" jsonschema:"Activated object type"`
+}
+
+// HandleActivateObject activates an ABAP object
+func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRequest, input ActivateObjectInput) (*mcp.CallToolResult, ActivateObjectOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "activate-object")
+
+	log.Info("Tool execution started",
+		zap.String("object_type", input.ObjectType),
+		zap.String("object_name", input.ObjectName),
+	)
+
+	objectType := strings.ToLower(input.ObjectType)
+	validTypes := map[string]bool{
+		"program": true, "prog": true,
+		"class": true, "clas": true,
+		"interface": true, "intf": true,
+		"include": true, "incl": true,
+		"function_group": true, "fugr": true,
+	}
+	if !validTypes[objectType] {
+		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
+		return &mcp.CallToolResult{IsError: true}, ActivateObjectOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
+	}
+
+	client, err := h.getClient()
+	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, ActivateObjectOutput{
+			Success:    false,
+			Message:    fmt.Sprintf("Failed to connect: %v", err),
+			ObjectName: input.ObjectName,
+			ObjectType: input.ObjectType,
+		}, nil
+	}
+
+	result, err := client.ActivateObject(input.ObjectType, input.ObjectName)
+	if err != nil {
+		log.Error("Activation failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, ActivateObjectOutput{
+			Success:    false,
+			Message:    fmt.Sprintf("Activation failed: %v", err),
+			ObjectName: input.ObjectName,
+			ObjectType: input.ObjectType,
+		}, nil
+	}
+
+	message := "Object activated successfully"
+	if !result.Success {
+		var msgs []string
+		for _, m := range result.Messages {
+			msgs = append(msgs, fmt.Sprintf("[%s] %s", m.Severity, m.Text))
+		}
+		message = "Activation failed: " + strings.Join(msgs, "; ")
+	} else if len(result.Messages) > 0 {
+		var msgs []string
+		for _, m := range result.Messages {
+			msgs = append(msgs, fmt.Sprintf("[%s] %s", m.Severity, m.Text))
+		}
+		message = "Object activated with messages: " + strings.Join(msgs, "; ")
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", result.Success),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, ActivateObjectOutput{
+		Success:    result.Success,
+		Message:    message,
+		ObjectName: input.ObjectName,
+		ObjectType: input.ObjectType,
+	}, nil
+}
+
+// RunUnitTestsInput defines input for run-unit-tests tool
+type RunUnitTestsInput struct {
+	ObjectType string `json:"object_type" jsonschema:"Type of ABAP object (program/class/interface)"`
+	ObjectName string `json:"object_name" jsonschema:"Name of the ABAP object to test"`
+}
+
+// RunUnitTestsOutput defines output for run-unit-tests tool
+type RunUnitTestsOutput struct {
+	AllPassed  bool   `json:"all_passed" jsonschema:"Whether all tests passed"`
+	TotalTests int    `json:"total_tests" jsonschema:"Total number of tests executed"`
+	Passed     int    `json:"passed" jsonschema:"Number of passed tests"`
+	Failed     int    `json:"failed" jsonschema:"Number of failed tests"`
+	Details    string `json:"details" jsonschema:"Human-readable test results"`
+	ObjectName string `json:"object_name" jsonschema:"Tested object name"`
+}
+
+// HandleRunUnitTests runs ABAP unit tests
+func (h *Handlers) HandleRunUnitTests(ctx context.Context, req *mcp.CallToolRequest, input RunUnitTestsInput) (*mcp.CallToolResult, RunUnitTestsOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "run-unit-tests")
+
+	log.Info("Tool execution started",
+		zap.String("object_type", input.ObjectType),
+		zap.String("object_name", input.ObjectName),
+	)
+
+	objectType := strings.ToLower(input.ObjectType)
+	validTypes := map[string]bool{
+		"program": true, "prog": true,
+		"class": true, "clas": true,
+		"interface": true, "intf": true,
+		"include": true, "incl": true,
+		"function_group": true, "fugr": true,
+	}
+	if !validTypes[objectType] {
+		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
+		return &mcp.CallToolResult{IsError: true}, RunUnitTestsOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
+	}
+
+	client, err := h.getClient()
+	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, RunUnitTestsOutput{
+			AllPassed:  false,
+			Details:    fmt.Sprintf("Failed to connect: %v", err),
+			ObjectName: input.ObjectName,
+		}, nil
+	}
+
+	result, err := client.RunUnitTests(input.ObjectType, input.ObjectName)
+	if err != nil {
+		log.Error("Unit test execution failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, RunUnitTestsOutput{
+			AllPassed:  false,
+			Details:    fmt.Sprintf("Test execution failed: %v", err),
+			ObjectName: input.ObjectName,
+		}, nil
+	}
+
+	// Build human-readable details
+	var details strings.Builder
+	fmt.Fprintf(&details, "Unit Test Results for %s\n", input.ObjectName)
+	fmt.Fprintf(&details, "Total: %d | Passed: %d | Failed: %d\n\n", result.TotalTests, result.Passed, result.Failed)
+
+	for _, tc := range result.TestClasses {
+		fmt.Fprintf(&details, "Test Class: %s\n", tc.Name)
+		for _, tm := range tc.Methods {
+			status := "PASS"
+			if tm.Status != "passed" {
+				status = "FAIL"
+			}
+			fmt.Fprintf(&details, "  [%s] %s", status, tm.Name)
+			if tm.Message != "" {
+				fmt.Fprintf(&details, " - %s", tm.Message)
+			}
+			details.WriteString("\n")
+		}
+		details.WriteString("\n")
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("all_passed", result.AllPassed),
+		zap.Int("total", result.TotalTests),
+		zap.Int("passed", result.Passed),
+		zap.Int("failed", result.Failed),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, RunUnitTestsOutput{
+		AllPassed:  result.AllPassed,
+		TotalTests: result.TotalTests,
+		Passed:     result.Passed,
+		Failed:     result.Failed,
+		Details:    details.String(),
+		ObjectName: input.ObjectName,
+	}, nil
+}
+
+// UpdateProgramInput defines input for update-program tool
+type UpdateProgramInput struct {
+	Name       string `json:"name" jsonschema:"Program name (e.g. ZTEST_PROG)"`
+	SourceCode string `json:"source_code" jsonschema:"Complete ABAP source code (not diffs)"`
+}
+
+// UpdateProgramOutput defines output for update-program tool
+type UpdateProgramOutput struct {
+	Success bool   `json:"success" jsonschema:"Whether update was successful"`
+	Message string `json:"message" jsonschema:"Result message"`
+	Name    string `json:"name" jsonschema:"Updated program name"`
+}
+
+// HandleUpdateProgram updates an existing ABAP program
+func (h *Handlers) HandleUpdateProgram(ctx context.Context, req *mcp.CallToolRequest, input UpdateProgramInput) (*mcp.CallToolResult, UpdateProgramOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "update-program")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	client, err := h.getClient()
+	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateProgramOutput{
+			Success: false,
+			Message: fmt.Sprintf("Failed to connect: %v", err),
+			Name:    input.Name,
+		}, nil
+	}
+
+	err = client.UpdateProgram(input.Name, input.SourceCode)
+	if err != nil {
+		log.Error("Failed to update program", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateProgramOutput{
+			Success: false,
+			Message: fmt.Sprintf("Failed to update program: %v", err),
+			Name:    input.Name,
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, UpdateProgramOutput{
+		Success: true,
+		Message: "Program updated successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// UpdateClassInput defines input for update-class tool
+type UpdateClassInput struct {
+	Name       string `json:"name" jsonschema:"Class name (e.g. ZCL_TEST)"`
+	SourceCode string `json:"source_code" jsonschema:"Complete ABAP class source code (not diffs)"`
+}
+
+// UpdateClassOutput defines output for update-class tool
+type UpdateClassOutput struct {
+	Success bool   `json:"success" jsonschema:"Whether update was successful"`
+	Message string `json:"message" jsonschema:"Result message"`
+	Name    string `json:"name" jsonschema:"Updated class name"`
+}
+
+// HandleUpdateClass updates an existing ABAP class
+func (h *Handlers) HandleUpdateClass(ctx context.Context, req *mcp.CallToolRequest, input UpdateClassInput) (*mcp.CallToolResult, UpdateClassOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "update-class")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	client, err := h.getClient()
+	if err != nil {
+		log.Error("Failed to get ADT client", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateClassOutput{
+			Success: false,
+			Message: fmt.Sprintf("Failed to connect: %v", err),
+			Name:    input.Name,
+		}, nil
+	}
+
+	err = client.UpdateClass(input.Name, input.SourceCode)
+	if err != nil {
+		log.Error("Failed to update class", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateClassOutput{
+			Success: false,
+			Message: fmt.Sprintf("Failed to update class: %v", err),
+			Name:    input.Name,
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, UpdateClassOutput{
+		Success: true,
+		Message: "Class updated successfully",
 		Name:    input.Name,
 	}, nil
 }

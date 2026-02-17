@@ -3,7 +3,7 @@ module github.com/bluefunda/abaper-mcp
 go 1.25.6
 
 require (
-	github.com/bluefunda/abaper v0.0.4
+	github.com/bluefunda/abaper v0.0.5-0.20260217082413-1163e4f4c321
 	github.com/bluefunda/go-vault v0.0.0-20260211051016-89363a6dfc38
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.1.0
@@ -13,6 +13,7 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.1 // indirect
 	github.com/google/jsonschema-go v0.3.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -25,12 +26,16 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-7 // indirect
 	github.com/hashicorp/vault/api v1.22.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/nats-io/nkeys v0.4.11 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
+	github.com/spf13/cobra v1.9.1 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/crypto v0.40.0 // indirect
@@ -39,4 +44,5 @@ require (
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
