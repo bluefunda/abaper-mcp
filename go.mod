@@ -40,3 +40,5 @@ require (
 	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 )
+
+replace github.com/bluefunda/abaper => ../abaper
