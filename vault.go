@@ -28,13 +28,18 @@ func (c *Config) loadSecretsFromVault() error {
 		if v, ok := svcSecrets["sap_password"]; ok && v != "" {
 			c.ADTPassword = v
 		}
-		if v, ok := svcSecrets["nats_url"]; ok && v != "" {
+	}
+
+	// NATS URL from shared infra config (single source of truth for all services)
+	natsConfig, err := vc.GetSecret("infra/nats/config")
+	if err == nil {
+		if v, ok := natsConfig["url"]; ok && v != "" {
 			c.NATSUrl = v
 		}
 	}
 
-	// NATS credentials file from infra path
-	credsContent, err := vc.GetField("infra/nats/creds/abaper-mcp", "creds_file")
+	// NATS credentials from account-based path (individual account)
+	credsContent, err := vc.GetField("infra/nats/creds/individual/admin", "creds_file")
 	if err == nil && credsContent != "" {
 		tmpFile, err := os.CreateTemp("", "nats-creds-*.creds")
 		if err == nil {

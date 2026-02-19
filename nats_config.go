@@ -40,13 +40,8 @@ type SAPConfig struct {
 
 // NewNATSConfig creates a new NATS configuration from environment variables
 func NewNATSConfig() *NATSConfig {
-	url := os.Getenv("NATS_URL")
-	if url == "" {
-		url = "tls://connect.ngs.global:4222" // Default Synadia NGS
-	}
-
 	return &NATSConfig{
-		URL:              url,
+		URL:              os.Getenv("NATS_URL"),
 		CredsFile:        os.Getenv("NATS_CREDS"),
 		KVBucket:         getEnvOrDefault("NATS_KV_BUCKET", "AbaperMCPConfigBucket"),
 		ConnectTimeout:   120 * time.Second,
