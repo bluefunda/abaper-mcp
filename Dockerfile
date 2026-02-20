@@ -79,6 +79,10 @@ RUN apk add --no-cache \
     dumb-init \
     su-exec
 
+# Add Bluefunda internal CA for NATS TLS
+COPY certs/bluefunda-internal-ca.crt /usr/local/share/ca-certificates/bluefunda-internal-ca.crt
+RUN update-ca-certificates
+
 # Create non-root user
 RUN addgroup -g 1000 abaper && \
     adduser -D -u 1000 -G abaper abaper
