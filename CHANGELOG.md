@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/bluefunda/abaper-mcp/compare/v0.4.0...v0.4.1) (2026-02-20)
+
+
+### Bug Fixes
+
+* trigger release for internal CA cert addition ([#10](https://github.com/bluefunda/abaper-mcp/issues/10)) ([a2db494](https://github.com/bluefunda/abaper-mcp/commit/a2db494acb0918e95116464ee3516eb69dd52030))
+
 ## [0.4.0](https://github.com/bluefunda/abaper-mcp/compare/v0.3.8...v0.4.0) (2026-02-19)
 
 
