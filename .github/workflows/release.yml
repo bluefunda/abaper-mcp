@@ -10,6 +10,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
 
   deploy:
     needs: release
