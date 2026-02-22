@@ -10,7 +10,6 @@ import (
 
 // registerResources registers all MCP resources
 func registerResources(server *mcp.Server, handlers *Handlers) {
-	// Resource template for ABAP programs
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
 		URITemplate: "abap://program/{name}",
 		Name:        "ABAP Program",
@@ -18,7 +17,6 @@ func registerResources(server *mcp.Server, handlers *Handlers) {
 		MIMEType:    "text/x-abap",
 	}, handlers.HandleProgramResource)
 
-	// Resource template for ABAP classes
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
 		URITemplate: "abap://class/{name}",
 		Name:        "ABAP Class",
@@ -26,15 +24,13 @@ func registerResources(server *mcp.Server, handlers *Handlers) {
 		MIMEType:    "text/x-abap",
 	}, handlers.HandleClassResource)
 
-	// Resource template for ABAP functions
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
-		URITemplate: "abap://function/{name}",
-		Name:        "ABAP Function",
-		Description: "Retrieve ABAP function module source code by name",
+		URITemplate: "abap://function/{group}/{name}",
+		Name:        "ABAP Function Module",
+		Description: "Retrieve ABAP function module source code by function group and name",
 		MIMEType:    "text/x-abap",
 	}, handlers.HandleFunctionResource)
 
-	// Resource template for ABAP interfaces
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
 		URITemplate: "abap://interface/{name}",
 		Name:        "ABAP Interface",
@@ -42,7 +38,6 @@ func registerResources(server *mcp.Server, handlers *Handlers) {
 		MIMEType:    "text/x-abap",
 	}, handlers.HandleInterfaceResource)
 
-	// Resource template for ABAP tables
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
 		URITemplate: "abap://table/{name}",
 		Name:        "ABAP Table",
@@ -50,7 +45,6 @@ func registerResources(server *mcp.Server, handlers *Handlers) {
 		MIMEType:    "text/x-abap",
 	}, handlers.HandleTableResource)
 
-	// Resource template for ABAP structures
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
 		URITemplate: "abap://structure/{name}",
 		Name:        "ABAP Structure",
@@ -58,7 +52,6 @@ func registerResources(server *mcp.Server, handlers *Handlers) {
 		MIMEType:    "text/x-abap",
 	}, handlers.HandleStructureResource)
 
-	// Resource template for ABAP includes
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
 		URITemplate: "abap://include/{name}",
 		Name:        "ABAP Include",
@@ -66,7 +59,6 @@ func registerResources(server *mcp.Server, handlers *Handlers) {
 		MIMEType:    "text/x-abap",
 	}, handlers.HandleIncludeResource)
 
-	// Resource for listing packages
 	server.AddResource(&mcp.Resource{
 		URI:         "abap://packages",
 		Name:        "ABAP Packages",
@@ -82,12 +74,7 @@ func (h *Handlers) HandleProgramResource(ctx context.Context, req *mcp.ReadResou
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.getClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ADT client: %w", err)
-	}
-
-	source, err := client.GetProgram(name)
+	result, err := h.apiClient.GetObject("PROG", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -97,7 +84,7 @@ func (h *Handlers) HandleProgramResource(ctx context.Context, req *mcp.ReadResou
 			{
 				URI:      req.Params.URI,
 				MIMEType: "text/x-abap",
-				Text:     formatSourceCode(name, "PROGRAM", "", source.Source),
+				Text:     formatSourceCode(name, "PROGRAM", "", result.Source),
 			},
 		},
 	}, nil
@@ -110,12 +97,7 @@ func (h *Handlers) HandleClassResource(ctx context.Context, req *mcp.ReadResourc
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.getClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ADT client: %w", err)
-	}
-
-	source, err := client.GetClass(name)
+	result, err := h.apiClient.GetObject("CLAS", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -125,7 +107,7 @@ func (h *Handlers) HandleClassResource(ctx context.Context, req *mcp.ReadResourc
 			{
 				URI:      req.Params.URI,
 				MIMEType: "text/x-abap",
-				Text:     formatSourceCode(name, "CLASS", "", source.Source),
+				Text:     formatSourceCode(name, "CLASS", "", result.Source),
 			},
 		},
 	}, nil
@@ -133,14 +115,30 @@ func (h *Handlers) HandleClassResource(ctx context.Context, req *mcp.ReadResourc
 
 // HandleFunctionResource handles function resource requests
 func (h *Handlers) HandleFunctionResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	name := extractNameFromURI(req.Params.URI, "abap://function/")
-	if name == "" {
+	// URI: abap://function/{group}/{name}
+	path := strings.TrimPrefix(req.Params.URI, "abap://function/")
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("function resource requires format: abap://function/{group}/{name}")
+	}
+
+	group := parts[0]
+	name := parts[1]
+
+	result, err := h.apiClient.GetObject("FUNC", name, group)
+	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	// Function modules require function group parameter
-	// For now, return an error - this can be enhanced later
-	return nil, fmt.Errorf("function modules require function_group parameter - use abap://function/{group}/{name} format or use get-object tool")
+	return &mcp.ReadResourceResult{
+		Contents: []*mcp.ResourceContents{
+			{
+				URI:      req.Params.URI,
+				MIMEType: "text/x-abap",
+				Text:     formatSourceCode(name, "FUNCTION", "", result.Source),
+			},
+		},
+	}, nil
 }
 
 // HandleInterfaceResource handles interface resource requests
@@ -150,12 +148,7 @@ func (h *Handlers) HandleInterfaceResource(ctx context.Context, req *mcp.ReadRes
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.getClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ADT client: %w", err)
-	}
-
-	source, err := client.GetInterface(name)
+	result, err := h.apiClient.GetObject("INTF", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -165,7 +158,7 @@ func (h *Handlers) HandleInterfaceResource(ctx context.Context, req *mcp.ReadRes
 			{
 				URI:      req.Params.URI,
 				MIMEType: "text/x-abap",
-				Text:     formatSourceCode(name, "INTERFACE", "", source.Source),
+				Text:     formatSourceCode(name, "INTERFACE", "", result.Source),
 			},
 		},
 	}, nil
@@ -178,12 +171,7 @@ func (h *Handlers) HandleTableResource(ctx context.Context, req *mcp.ReadResourc
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.getClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ADT client: %w", err)
-	}
-
-	source, err := client.GetTable(name)
+	result, err := h.apiClient.GetObject("TABL", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -193,7 +181,7 @@ func (h *Handlers) HandleTableResource(ctx context.Context, req *mcp.ReadResourc
 			{
 				URI:      req.Params.URI,
 				MIMEType: "text/x-abap",
-				Text:     formatSourceCode(name, "TABLE", "", source.Source),
+				Text:     formatSourceCode(name, "TABLE", "", result.Source),
 			},
 		},
 	}, nil
@@ -206,12 +194,7 @@ func (h *Handlers) HandleStructureResource(ctx context.Context, req *mcp.ReadRes
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.getClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ADT client: %w", err)
-	}
-
-	source, err := client.GetStructure(name)
+	result, err := h.apiClient.GetObject("STRU", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -221,7 +204,7 @@ func (h *Handlers) HandleStructureResource(ctx context.Context, req *mcp.ReadRes
 			{
 				URI:      req.Params.URI,
 				MIMEType: "text/x-abap",
-				Text:     formatSourceCode(name, "STRUCTURE", "", source.Source),
+				Text:     formatSourceCode(name, "STRUCTURE", "", result.Source),
 			},
 		},
 	}, nil
@@ -234,12 +217,7 @@ func (h *Handlers) HandleIncludeResource(ctx context.Context, req *mcp.ReadResou
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	client, err := h.getClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ADT client: %w", err)
-	}
-
-	source, err := client.GetInclude(name)
+	result, err := h.apiClient.GetObject("INCL", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -249,7 +227,7 @@ func (h *Handlers) HandleIncludeResource(ctx context.Context, req *mcp.ReadResou
 			{
 				URI:      req.Params.URI,
 				MIMEType: "text/x-abap",
-				Text:     formatSourceCode(name, "INCLUDE", "", source.Source),
+				Text:     formatSourceCode(name, "INCLUDE", "", result.Source),
 			},
 		},
 	}, nil
@@ -257,12 +235,7 @@ func (h *Handlers) HandleIncludeResource(ctx context.Context, req *mcp.ReadResou
 
 // HandlePackagesResource handles packages list resource
 func (h *Handlers) HandlePackagesResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	client, err := h.getClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ADT client: %w", err)
-	}
-
-	packages, err := client.ListPackages("*")
+	packages, err := h.apiClient.ListPackages()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list packages: %w", err)
 	}

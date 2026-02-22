@@ -10,129 +10,66 @@ import (
 
 // registerPrompts registers all MCP prompts
 func registerPrompts(server *mcp.Server, handlers *Handlers) {
-	// Prompt: analyze-abap - Analyze ABAP code
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "analyze-abap",
 		Description: "Analyze ABAP code for quality, performance, and best practices",
 		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "object_type",
-				Description: "Type of ABAP object (program/class/function/interface)",
-				Required:    true,
-			},
-			{
-				Name:        "object_name",
-				Description: "Name of the ABAP object to analyze",
-				Required:    true,
-			},
+			{Name: "object_type", Description: "Type of ABAP object (program/class/function/interface)", Required: true},
+			{Name: "object_name", Description: "Name of the ABAP object to analyze", Required: true},
 		},
 	}, handlers.HandleAnalyzePrompt)
 
-	// Prompt: review-abap - Review ABAP code
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "review-abap",
 		Description: "Perform a comprehensive code review of ABAP code",
 		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "object_type",
-				Description: "Type of ABAP object (program/class/function/interface)",
-				Required:    true,
-			},
-			{
-				Name:        "object_name",
-				Description: "Name of the ABAP object to review",
-				Required:    true,
-			},
+			{Name: "object_type", Description: "Type of ABAP object (program/class/function/interface)", Required: true},
+			{Name: "object_name", Description: "Name of the ABAP object to review", Required: true},
 		},
 	}, handlers.HandleReviewPrompt)
 
-	// Prompt: optimize-abap - Optimize ABAP code
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "optimize-abap",
 		Description: "Suggest optimizations for ABAP code performance and efficiency",
 		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "object_type",
-				Description: "Type of ABAP object (program/class/function/interface)",
-				Required:    true,
-			},
-			{
-				Name:        "object_name",
-				Description: "Name of the ABAP object to optimize",
-				Required:    true,
-			},
+			{Name: "object_type", Description: "Type of ABAP object (program/class/function/interface)", Required: true},
+			{Name: "object_name", Description: "Name of the ABAP object to optimize", Required: true},
 		},
 	}, handlers.HandleOptimizePrompt)
 
-	// Prompt: document-abap - Generate documentation
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "document-abap",
 		Description: "Generate comprehensive documentation for ABAP code",
 		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "object_type",
-				Description: "Type of ABAP object (program/class/function/interface)",
-				Required:    true,
-			},
-			{
-				Name:        "object_name",
-				Description: "Name of the ABAP object to document",
-				Required:    true,
-			},
+			{Name: "object_type", Description: "Type of ABAP object (program/class/function/interface)", Required: true},
+			{Name: "object_name", Description: "Name of the ABAP object to document", Required: true},
 		},
 	}, handlers.HandleDocumentPrompt)
 
-	// Prompt: test-abap - Generate unit tests
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "test-abap",
 		Description: "Generate ABAP unit test code for a given object",
 		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "object_type",
-				Description: "Type of ABAP object (program/class/function/interface)",
-				Required:    true,
-			},
-			{
-				Name:        "object_name",
-				Description: "Name of the ABAP object to test",
-				Required:    true,
-			},
+			{Name: "object_type", Description: "Type of ABAP object (program/class/function/interface)", Required: true},
+			{Name: "object_name", Description: "Name of the ABAP object to test", Required: true},
 		},
 	}, handlers.HandleTestPrompt)
 
-	// Prompt: refactor-abap - Suggest refactoring
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "refactor-abap",
 		Description: "Suggest refactoring improvements for ABAP code",
 		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "object_type",
-				Description: "Type of ABAP object (program/class/function/interface)",
-				Required:    true,
-			},
-			{
-				Name:        "object_name",
-				Description: "Name of the ABAP object to refactor",
-				Required:    true,
-			},
+			{Name: "object_type", Description: "Type of ABAP object (program/class/function/interface)", Required: true},
+			{Name: "object_name", Description: "Name of the ABAP object to refactor", Required: true},
 		},
 	}, handlers.HandleRefactorPrompt)
 
-	// Prompt: explain-abap - Explain ABAP code
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "explain-abap",
 		Description: "Explain what the ABAP code does in simple terms",
 		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "object_type",
-				Description: "Type of ABAP object (program/class/function/interface)",
-				Required:    true,
-			},
-			{
-				Name:        "object_name",
-				Description: "Name of the ABAP object to explain",
-				Required:    true,
-			},
+			{Name: "object_type", Description: "Type of ABAP object (program/class/function/interface)", Required: true},
+			{Name: "object_name", Description: "Name of the ABAP object to explain", Required: true},
 		},
 	}, handlers.HandleExplainPrompt)
 }
@@ -167,12 +104,7 @@ Please provide a detailed analysis with specific recommendations for improvement
 
 	return &mcp.GetPromptResult{
 		Messages: []*mcp.PromptMessage{
-			{
-				Role: "user",
-				Content: &mcp.TextContent{
-					Text: prompt,
-				},
-			},
+			{Role: "user", Content: &mcp.TextContent{Text: prompt}},
 		},
 	}, nil
 }
@@ -210,12 +142,7 @@ Provide constructive feedback with specific examples and suggestions for improve
 
 	return &mcp.GetPromptResult{
 		Messages: []*mcp.PromptMessage{
-			{
-				Role: "user",
-				Content: &mcp.TextContent{
-					Text: prompt,
-				},
-			},
+			{Role: "user", Content: &mcp.TextContent{Text: prompt}},
 		},
 	}, nil
 }
@@ -250,12 +177,7 @@ Provide specific optimization suggestions with code examples where applicable.`,
 
 	return &mcp.GetPromptResult{
 		Messages: []*mcp.PromptMessage{
-			{
-				Role: "user",
-				Content: &mcp.TextContent{
-					Text: prompt,
-				},
-			},
+			{Role: "user", Content: &mcp.TextContent{Text: prompt}},
 		},
 	}, nil
 }
@@ -294,12 +216,7 @@ Generate clear, professional documentation suitable for technical and business u
 
 	return &mcp.GetPromptResult{
 		Messages: []*mcp.PromptMessage{
-			{
-				Role: "user",
-				Content: &mcp.TextContent{
-					Text: prompt,
-				},
-			},
+			{Role: "user", Content: &mcp.TextContent{Text: prompt}},
 		},
 	}, nil
 }
@@ -337,12 +254,7 @@ Generate complete, runnable ABAP unit test code with good coverage.`,
 
 	return &mcp.GetPromptResult{
 		Messages: []*mcp.PromptMessage{
-			{
-				Role: "user",
-				Content: &mcp.TextContent{
-					Text: prompt,
-				},
-			},
+			{Role: "user", Content: &mcp.TextContent{Text: prompt}},
 		},
 	}, nil
 }
@@ -380,12 +292,7 @@ Provide specific refactoring suggestions with before/after code examples.`,
 
 	return &mcp.GetPromptResult{
 		Messages: []*mcp.PromptMessage{
-			{
-				Role: "user",
-				Content: &mcp.TextContent{
-					Text: prompt,
-				},
-			},
+			{Role: "user", Content: &mcp.TextContent{Text: prompt}},
 		},
 	}, nil
 }
@@ -422,55 +329,19 @@ Explain the code in a way that both technical and non-technical stakeholders can
 
 	return &mcp.GetPromptResult{
 		Messages: []*mcp.PromptMessage{
-			{
-				Role: "user",
-				Content: &mcp.TextContent{
-					Text: prompt,
-				},
-			},
+			{Role: "user", Content: &mcp.TextContent{Text: prompt}},
 		},
 	}, nil
 }
 
-// getSourceCode retrieves source code for a given object
+// getSourceCode retrieves source code for a given object via abaper-ts
 func (h *Handlers) getSourceCode(objectType, objectName string) (string, error) {
-	client, err := h.clientManager.GetClient()
+	adtType := normalizeObjectType(objectType)
+	result, err := h.apiClient.GetObject(adtType, objectName, "")
 	if err != nil {
-		return "", fmt.Errorf("failed to get ADT client: %w", err)
+		return "", fmt.Errorf("failed to get %s %s: %w", objectType, objectName, err)
 	}
-
-	objectType = strings.ToLower(objectType)
-
-	switch objectType {
-	case "program", "prog":
-		source, err := client.GetProgram(objectName)
-		if err != nil {
-			return "", fmt.Errorf("failed to get program: %w", err)
-		}
-		return source.Source, nil
-
-	case "class", "clas":
-		source, err := client.GetClass(objectName)
-		if err != nil {
-			return "", fmt.Errorf("failed to get class: %w", err)
-		}
-		return source.Source, nil
-
-	case "function", "func":
-		// Note: GetFunction requires functionGroup parameter
-		// For prompts, we'll try to get it anyway, but this may need enhancement
-		return "", fmt.Errorf("function modules require function_group parameter - use get-object tool instead")
-
-	case "interface", "intf":
-		source, err := client.GetInterface(objectName)
-		if err != nil {
-			return "", fmt.Errorf("failed to get interface: %w", err)
-		}
-		return source.Source, nil
-
-	default:
-		return "", fmt.Errorf("unsupported object type: %s", objectType)
-	}
+	return result.Source, nil
 }
 
 // wrapCodeBlock wraps code in markdown code block

@@ -55,12 +55,9 @@ func main() {
 		nil,
 	)
 
-	// Initialize ABAP client configuration
+	// Initialize configuration — abaper-mcp now calls abaper-ts REST API
 	config := &Config{
-		ADTHost:     getEnv("SAP_HOST", ""),
-		ADTClient:   getEnv("SAP_CLIENT", "100"),
-		ADTUsername: getEnv("SAP_USERNAME", ""),
-		ADTPassword: getEnv("SAP_PASSWORD", ""),
+		AbaperTSURL: getEnv("ABAPER_TS_URL", "http://localhost:8080"),
 	}
 
 	// Load secrets from Vault if available (overrides env vars)
@@ -72,20 +69,14 @@ func main() {
 		}
 	}
 
-	// Try to load config from NATS KV if enabled
-	if getEnv("NATS_ENABLE_KV", "false") == "true" {
-		if sapConfig, err := loadConfigFromNATS(config); err == nil {
-			logger.L.Info("Loaded SAP configuration from NATS KV")
-			config.ADTHost = sapConfig.Host
-			config.ADTClient = sapConfig.Client
-			config.ADTUsername = sapConfig.Username
-			config.ADTPassword = sapConfig.Password
-		} else {
-			logger.L.Warn("Failed to load config from NATS KV, falling back to environment variables",
-				zap.Error(err),
-			)
-		}
+	// Validate configuration
+	if err := config.Validate(); err != nil {
+		logger.L.Fatal("Invalid configuration", zap.Error(err))
 	}
+
+	logger.L.Info("Configuration loaded",
+		zap.String("abaper_ts_url", config.AbaperTSURL),
+	)
 
 	// Create handlers with config
 	handlers := NewHandlers(config)
@@ -259,20 +250,6 @@ func runSSEMode(ctx context.Context, server *mcp.Server) {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		logger.L.Fatal("HTTP server error", zap.Error(err))
 	}
-}
-
-// loadConfigFromNATS loads configuration from NATS KV store
-func loadConfigFromNATS(config *Config) (*SAPConfig, error) {
-	natsConfig := newNATSConfigWithOverrides(config)
-	natsConfig.EnableKV = true
-
-	natsConn, err := natsConfig.Connect()
-	if err != nil {
-		return nil, err
-	}
-	defer natsConn.Close()
-
-	return natsConn.GetSAPConfig()
 }
 
 func getEnv(key, defaultValue string) string {

@@ -6,27 +6,18 @@ import (
 	vault "github.com/bluefunda/go-vault"
 )
 
-// loadSecretsFromVault loads SAP credentials and NATS config from Vault, overriding env-based values.
+// loadSecretsFromVault loads service config and NATS credentials from Vault, overriding env-based values.
 func (c *Config) loadSecretsFromVault() error {
 	vc, err := vault.NewClientFromEnv()
 	if err != nil {
 		return err
 	}
 
-	// Service secrets: SAP config + NATS URL
+	// Service secrets: abaper-ts URL
 	svcSecrets, err := vc.GetSecret("apps/bluefunda-ai/services/abaper-mcp")
 	if err == nil {
-		if v, ok := svcSecrets["sap_host"]; ok && v != "" {
-			c.ADTHost = v
-		}
-		if v, ok := svcSecrets["sap_client"]; ok && v != "" {
-			c.ADTClient = v
-		}
-		if v, ok := svcSecrets["sap_username"]; ok && v != "" {
-			c.ADTUsername = v
-		}
-		if v, ok := svcSecrets["sap_password"]; ok && v != "" {
-			c.ADTPassword = v
+		if v, ok := svcSecrets["abaper_ts_url"]; ok && v != "" {
+			c.AbaperTSURL = v
 		}
 	}
 

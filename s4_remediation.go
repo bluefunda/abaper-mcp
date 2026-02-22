@@ -115,10 +115,8 @@ func analyzeCode(sourceCode string, patterns *S4RemediationPatterns) []S4Remedia
 	for _, pattern := range patterns.RemediationPatterns {
 		for _, symptom := range pattern.Symptoms {
 			if matchesSymptom(upperCode, symptom) {
-				// Extract the actual matching code snippet
 				matchedCode := extractMatchingCode(sourceCode, symptom)
 
-				// Use pattern severity if set, otherwise derive from category
 				severity := pattern.Severity
 				if severity == "" {
 					severity = getSeverityForCategory(pattern.Category)
@@ -144,32 +142,26 @@ func analyzeCode(sourceCode string, patterns *S4RemediationPatterns) []S4Remedia
 func matchesSymptom(upperCode, symptom string) bool {
 	symptomUpper := strings.ToUpper(symptom)
 
-	// Handle different symptom patterns
 	switch {
 	case strings.Contains(symptomUpper, "USED"):
-		// e.g., "REUSE_ALV_LIST_DISPLAY used"
 		parts := strings.Split(symptomUpper, " ")
 		if len(parts) > 0 {
 			return strings.Contains(upperCode, parts[0])
 		}
 	case strings.Contains(symptomUpper, "REFERENCED"):
-		// e.g., "SLIS structures referenced"
 		parts := strings.Split(symptomUpper, " ")
 		if len(parts) > 0 {
 			return strings.Contains(upperCode, parts[0])
 		}
 	case strings.Contains(symptomUpper, "SELECT ON"):
-		// e.g., "SELECT on VBDATA"
 		parts := strings.Split(symptomUpper, " ON ")
 		if len(parts) > 1 {
 			tableName := strings.TrimSpace(parts[1])
-			// Match SELECT ... FROM tablename pattern
 			pattern := fmt.Sprintf(`SELECT\s+.*\s+FROM\s+%s`, regexp.QuoteMeta(tableName))
 			matched, _ := regexp.MatchString(pattern, upperCode)
 			return matched
 		}
 	case strings.Contains(symptomUpper, "SELECT FROM"):
-		// e.g., "SELECT from BSIS/BSAS"
 		parts := strings.Split(symptomUpper, " FROM ")
 		if len(parts) > 1 {
 			tables := strings.Split(parts[1], "/")
@@ -183,7 +175,6 @@ func matchesSymptom(upperCode, symptom string) bool {
 			}
 		}
 	default:
-		// Direct string match
 		return strings.Contains(upperCode, symptomUpper)
 	}
 
@@ -196,7 +187,6 @@ func extractMatchingCode(sourceCode, symptom string) string {
 	symptomUpper := strings.ToUpper(symptom)
 	lines := strings.Split(sourceCode, "\n")
 
-	// Find the keyword to search for
 	var keyword string
 	switch {
 	case strings.Contains(symptomUpper, "REUSE_ALV"):
@@ -214,7 +204,6 @@ func extractMatchingCode(sourceCode, symptom string) string {
 	case strings.Contains(symptomUpper, "BSAS"):
 		keyword = "BSAS"
 	default:
-		// Extract first word from symptom
 		parts := strings.Fields(symptomUpper)
 		if len(parts) > 0 {
 			keyword = parts[0]
@@ -225,11 +214,9 @@ func extractMatchingCode(sourceCode, symptom string) string {
 		return ""
 	}
 
-	// Find lines containing the keyword
 	var matchedLines []string
 	for i, line := range lines {
 		if strings.Contains(strings.ToUpper(line), keyword) {
-			// Include context: 1 line before and after
 			start := i
 			if i > 0 {
 				start = i - 1
@@ -248,7 +235,6 @@ func extractMatchingCode(sourceCode, symptom string) string {
 		}
 	}
 
-	// Also check for SELECT statements with table names
 	if strings.Contains(symptomUpper, "SELECT") {
 		selectRegex := regexp.MustCompile(`(?i)SELECT\s+.*\s+FROM\s+\w+`)
 		matches := selectRegex.FindAllString(sourceCode, -1)
@@ -284,10 +270,8 @@ func containsString(slice []string, item string) bool {
 func generateMarkdownReport(result S4RemediationResult) string {
 	var sb strings.Builder
 
-	// Header
 	sb.WriteString("# S/4HANA Remediation Analysis Report\n\n")
 
-	// Run Metadata
 	sb.WriteString("## Run Information\n\n")
 	sb.WriteString("| Field | Value |\n")
 	sb.WriteString("|-------|-------|\n")
@@ -298,7 +282,6 @@ func generateMarkdownReport(result S4RemediationResult) string {
 	sb.WriteString(fmt.Sprintf("| **Analyst** | %s |\n", result.RunMetadata.Analyst))
 	sb.WriteString("\n")
 
-	// Artifact Information
 	sb.WriteString("## Analyzed Artifact\n\n")
 	sb.WriteString("| Field | Value |\n")
 	sb.WriteString("|-------|-------|\n")
@@ -312,13 +295,11 @@ func generateMarkdownReport(result S4RemediationResult) string {
 	}
 	sb.WriteString("\n")
 
-	// Summary
 	sb.WriteString("## Summary\n\n")
 	if len(result.Issues) == 0 {
 		sb.WriteString("**No S/4HANA compatibility issues detected.**\n\n")
 		sb.WriteString("The analyzed code appears to be compatible with S/4HANA.\n\n")
 	} else {
-		// Count by severity
 		highCount := 0
 		mediumCount := 0
 		for _, issue := range result.Issues {
@@ -335,7 +316,6 @@ func generateMarkdownReport(result S4RemediationResult) string {
 		sb.WriteString("\n")
 	}
 
-	// Issues Detail
 	if len(result.Issues) > 0 {
 		sb.WriteString("## Issues Detail\n\n")
 
@@ -364,7 +344,6 @@ func generateMarkdownReport(result S4RemediationResult) string {
 		}
 	}
 
-	// Footer
 	sb.WriteString("## Recommendations\n\n")
 	if len(result.Issues) > 0 {
 		sb.WriteString("1. Review each issue and apply the recommended fixes\n")
@@ -416,46 +395,12 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
 	}
 
-	// Get fresh client
-	client, err := h.getClient()
+	// Fetch source code via abaper-ts
+	adtType := normalizeObjectType(input.ObjectType)
+	objResult, err := h.apiClient.GetObject(adtType, input.ObjectName, input.FunctionGroup)
 	if err != nil {
-		log.Error("Failed to get ADT client", zap.Error(err))
-		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to connect: %w", err)
-	}
-
-	// Fetch the source code
-	var sourceCode string
-	switch objectType {
-	case "program", "prog":
-		source, err := client.GetProgram(input.ObjectName)
-		if err != nil {
-			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get program: %w", err)
-		}
-		sourceCode = source.Source
-	case "class", "clas":
-		source, err := client.GetClass(input.ObjectName)
-		if err != nil {
-			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get class: %w", err)
-		}
-		sourceCode = source.Source
-	case "function", "func":
-		source, err := client.GetFunction(input.ObjectName, input.FunctionGroup)
-		if err != nil {
-			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get function: %w", err)
-		}
-		sourceCode = source.Source
-	case "interface", "intf":
-		source, err := client.GetInterface(input.ObjectName)
-		if err != nil {
-			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get interface: %w", err)
-		}
-		sourceCode = source.Source
-	case "include", "incl":
-		source, err := client.GetInclude(input.ObjectName)
-		if err != nil {
-			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get include: %w", err)
-		}
-		sourceCode = source.Source
+		log.Error("Failed to get object", zap.Error(err))
+		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get object: %w", err)
 	}
 
 	// Load patterns
@@ -465,9 +410,9 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 	}
 
 	// Analyze the code
-	issues := analyzeCode(sourceCode, patterns)
+	issues := analyzeCode(objResult.Source, patterns)
 
-	// Ensure issues is never nil (JSON schema requires array, not null)
+	// Ensure issues is never nil
 	if issues == nil {
 		issues = []S4RemediationIssue{}
 	}
@@ -491,9 +436,9 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 		RunMetadata: RunMetadata{
 			RunID:         uuid.New().String(),
 			TimestampUTC:  time.Now().UTC().Format(time.RFC3339),
-			SystemID:      h.clientManager.config.ADTHost,
+			SystemID:      h.config.AbaperTSURL,
 			SystemRelease: "",
-			Client:        h.clientManager.config.ADTClient,
+			Client:        "",
 			Analyst:       "Claude",
 		},
 		Artifact: ArtifactInfo{
@@ -505,10 +450,8 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 		Issues: issues,
 	}
 
-	// Generate markdown report
 	markdownReport := generateMarkdownReport(result)
 
-	// Return combined output with both JSON and Markdown
 	output := S4RemediationOutput{
 		JSON:     result,
 		Markdown: markdownReport,
