@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/bluefunda/abaper-mcp/compare/v0.4.1...v0.5.0) (2026-02-23)
+
+
+### Features
+
+* add idempotency guard and structured error responses ([#15](https://github.com/bluefunda/abaper-mcp/issues/15)) ([d057232](https://github.com/bluefunda/abaper-mcp/commit/d057232a718252d6885ce4e58713148f1faffb66))
+* replace direct ADT calls with abaper-ts REST API ([bf3128f](https://github.com/bluefunda/abaper-mcp/commit/bf3128f6a35838f5ea2684ffcbe6dd838483b18f))
+
 ## [0.4.1](https://github.com/bluefunda/abaper-mcp/compare/v0.4.0...v0.4.1) (2026-02-20)
 
 
