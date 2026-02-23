@@ -256,10 +256,7 @@ func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequ
 
 	pkgInfos := make([]PackageInfo, 0, len(packages))
 	for _, pkg := range packages {
-		pkgInfos = append(pkgInfos, PackageInfo{
-			Name:        pkg.Name,
-			Description: pkg.Description,
-		})
+		pkgInfos = append(pkgInfos, PackageInfo(pkg))
 	}
 
 	output := ListPackagesOutput{
