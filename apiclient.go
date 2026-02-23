@@ -44,7 +44,7 @@ func (c *APIClient) post(path string, body interface{}) (json.RawMessage, error)
 	if err != nil {
 		return nil, fmt.Errorf("request to %s failed: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
