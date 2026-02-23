@@ -322,9 +322,12 @@ type CreateProgramInput struct {
 
 // CreateProgramOutput defines output for create-program tool
 type CreateProgramOutput struct {
-	Success bool   `json:"success" jsonschema:"Whether creation was successful"`
-	Message string `json:"message" jsonschema:"Result message"`
-	Name    string `json:"name" jsonschema:"Created program name"`
+	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Created program name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
 }
 
 // HandleCreateProgram creates a new ABAP program via abaper-ts
@@ -339,13 +342,50 @@ func (h *Handlers) HandleCreateProgram(ctx context.Context, req *mcp.CallToolReq
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
+	// Idempotency guard: check if object already exists
+	existing, _ := h.apiClient.GetObject("PROG", input.Name, "")
+	if existing != nil && existing.Source != "" {
+		// Object exists — switch to update mode
+		err := h.apiClient.UpdateObject("PROG", input.Name, input.SourceCode)
+		if err != nil {
+			log.Error("Failed to update existing program", zap.Error(err))
+			return nil, CreateProgramOutput{
+				Success:     false,
+				Message:     fmt.Sprintf("Program %s exists but update failed: %v", input.Name, err),
+				Name:        input.Name,
+				ErrorCode:   "SAP_ERROR",
+				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
+				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
+			}, nil
+		}
+
+		// Activate after update
+		activateResult, activateErr := h.apiClient.Activate("PROG", input.Name)
+		activated := activateErr == nil && activateResult != nil && activateResult.Success
+
+		log.Info("Idempotency guard: program already existed, updated",
+			zap.Bool("activated", activated),
+			zap.Duration("duration", time.Since(start)),
+		)
+
+		return nil, CreateProgramOutput{
+			Success: true,
+			Message: fmt.Sprintf("%s already existed \u2014 updated and %s",
+				input.Name, activationStatusString(activated)),
+			Name: input.Name,
+		}, nil
+	}
+
 	err := h.apiClient.CreateObject("PROG", input.Name, input.Description, input.SourceCode, input.Package)
 	if err != nil {
 		log.Error("Failed to create program", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateProgramOutput{
-			Success: false,
-			Message: fmt.Sprintf("Failed to create program: %v", err),
-			Name:    input.Name,
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to create program: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
 		}, nil
 	}
 
@@ -371,9 +411,12 @@ type CreateClassInput struct {
 
 // CreateClassOutput defines output for create-class tool
 type CreateClassOutput struct {
-	Success bool   `json:"success" jsonschema:"Whether creation was successful"`
-	Message string `json:"message" jsonschema:"Result message"`
-	Name    string `json:"name" jsonschema:"Created class name"`
+	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Created class name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
 }
 
 // HandleCreateClass creates a new ABAP class via abaper-ts
@@ -388,13 +431,50 @@ func (h *Handlers) HandleCreateClass(ctx context.Context, req *mcp.CallToolReque
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
+	// Idempotency guard: check if object already exists
+	existing, _ := h.apiClient.GetObject("CLAS", input.Name, "")
+	if existing != nil && existing.Source != "" {
+		// Object exists — switch to update mode
+		err := h.apiClient.UpdateObject("CLAS", input.Name, input.SourceCode)
+		if err != nil {
+			log.Error("Failed to update existing class", zap.Error(err))
+			return nil, CreateClassOutput{
+				Success:     false,
+				Message:     fmt.Sprintf("Class %s exists but update failed: %v", input.Name, err),
+				Name:        input.Name,
+				ErrorCode:   "SAP_ERROR",
+				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
+				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
+			}, nil
+		}
+
+		// Activate after update
+		activateResult, activateErr := h.apiClient.Activate("CLAS", input.Name)
+		activated := activateErr == nil && activateResult != nil && activateResult.Success
+
+		log.Info("Idempotency guard: class already existed, updated",
+			zap.Bool("activated", activated),
+			zap.Duration("duration", time.Since(start)),
+		)
+
+		return nil, CreateClassOutput{
+			Success: true,
+			Message: fmt.Sprintf("%s already existed \u2014 updated and %s",
+				input.Name, activationStatusString(activated)),
+			Name: input.Name,
+		}, nil
+	}
+
 	err := h.apiClient.CreateObject("CLAS", input.Name, input.Description, input.SourceCode, input.Package)
 	if err != nil {
 		log.Error("Failed to create class", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateClassOutput{
-			Success: false,
-			Message: fmt.Sprintf("Failed to create class: %v", err),
-			Name:    input.Name,
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to create class: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
 		}, nil
 	}
 
@@ -418,9 +498,12 @@ type UpdateProgramInput struct {
 
 // UpdateProgramOutput defines output for update-program tool
 type UpdateProgramOutput struct {
-	Success bool   `json:"success" jsonschema:"Whether update was successful"`
-	Message string `json:"message" jsonschema:"Result message"`
-	Name    string `json:"name" jsonschema:"Updated program name"`
+	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Updated program name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
 }
 
 // HandleUpdateProgram updates an existing ABAP program via abaper-ts
@@ -438,9 +521,12 @@ func (h *Handlers) HandleUpdateProgram(ctx context.Context, req *mcp.CallToolReq
 	if err != nil {
 		log.Error("Failed to update program", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, UpdateProgramOutput{
-			Success: false,
-			Message: fmt.Sprintf("Failed to update program: %v", err),
-			Name:    input.Name,
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to update program: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
 		}, nil
 	}
 
@@ -464,9 +550,12 @@ type UpdateClassInput struct {
 
 // UpdateClassOutput defines output for update-class tool
 type UpdateClassOutput struct {
-	Success bool   `json:"success" jsonschema:"Whether update was successful"`
-	Message string `json:"message" jsonschema:"Result message"`
-	Name    string `json:"name" jsonschema:"Updated class name"`
+	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Updated class name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
 }
 
 // HandleUpdateClass updates an existing ABAP class via abaper-ts
@@ -484,9 +573,12 @@ func (h *Handlers) HandleUpdateClass(ctx context.Context, req *mcp.CallToolReque
 	if err != nil {
 		log.Error("Failed to update class", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, UpdateClassOutput{
-			Success: false,
-			Message: fmt.Sprintf("Failed to update class: %v", err),
-			Name:    input.Name,
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to update class: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
 		}, nil
 	}
 
@@ -510,10 +602,13 @@ type ActivateObjectInput struct {
 
 // ActivateObjectOutput defines output for activate-object tool
 type ActivateObjectOutput struct {
-	Success    bool   `json:"success" jsonschema:"Whether activation was successful"`
-	Message    string `json:"message" jsonschema:"Result message with any warnings or errors"`
-	ObjectName string `json:"object_name" jsonschema:"Activated object name"`
-	ObjectType string `json:"object_type" jsonschema:"Activated object type"`
+	Success     bool     `json:"success" jsonschema:"Whether activation was successful"`
+	Message     string   `json:"message" jsonschema:"Result message with any warnings or errors"`
+	ObjectName  string   `json:"object_name" jsonschema:"Activated object name"`
+	ObjectType  string   `json:"object_type" jsonschema:"Activated object type"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
 }
 
 // HandleActivateObject activates an ABAP object via abaper-ts
@@ -545,10 +640,13 @@ func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRe
 	if err != nil {
 		log.Error("Activation failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, ActivateObjectOutput{
-			Success:    false,
-			Message:    fmt.Sprintf("Activation failed: %v", err),
-			ObjectName: input.ObjectName,
-			ObjectType: input.ObjectType,
+			Success:     false,
+			Message:     fmt.Sprintf("Activation failed: %v", err),
+			ObjectName:  input.ObjectName,
+			ObjectType:  input.ObjectType,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
 		}, nil
 	}
 
@@ -559,6 +657,21 @@ func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRe
 			msgs = append(msgs, fmt.Sprintf("[%s] %s", m.Severity, m.Text))
 		}
 		message = "Activation failed: " + strings.Join(msgs, "; ")
+
+		log.Info("Tool execution completed",
+			zap.Bool("success", result.Success),
+			zap.Duration("duration", time.Since(start)),
+		)
+
+		return nil, ActivateObjectOutput{
+			Success:     false,
+			Message:     message,
+			ObjectName:  input.ObjectName,
+			ObjectType:  input.ObjectType,
+			ErrorCode:   "ACTIVATION_FAILED",
+			ErrorDetail: strings.Join(msgs, "; "),
+			Errors:      msgs,
+		}, nil
 	} else if len(result.Messages) > 0 {
 		var msgs []string
 		for _, m := range result.Messages {
@@ -588,12 +701,15 @@ type RunUnitTestsInput struct {
 
 // RunUnitTestsOutput defines output for run-unit-tests tool
 type RunUnitTestsOutput struct {
-	AllPassed  bool   `json:"all_passed" jsonschema:"Whether all tests passed"`
-	TotalTests int    `json:"total_tests" jsonschema:"Total number of tests executed"`
-	Passed     int    `json:"passed" jsonschema:"Number of passed tests"`
-	Failed     int    `json:"failed" jsonschema:"Number of failed tests"`
-	Details    string `json:"details" jsonschema:"Human-readable test results"`
-	ObjectName string `json:"object_name" jsonschema:"Tested object name"`
+	AllPassed   bool     `json:"all_passed" jsonschema:"Whether all tests passed"`
+	TotalTests  int      `json:"total_tests" jsonschema:"Total number of tests executed"`
+	Passed      int      `json:"passed" jsonschema:"Number of passed tests"`
+	Failed      int      `json:"failed" jsonschema:"Number of failed tests"`
+	Details     string   `json:"details" jsonschema:"Human-readable test results"`
+	ObjectName  string   `json:"object_name" jsonschema:"Tested object name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
 }
 
 // HandleRunUnitTests runs ABAP unit tests via abaper-ts
@@ -625,9 +741,12 @@ func (h *Handlers) HandleRunUnitTests(ctx context.Context, req *mcp.CallToolRequ
 	if err != nil {
 		log.Error("Unit test execution failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, RunUnitTestsOutput{
-			AllPassed:  false,
-			Details:    fmt.Sprintf("Test execution failed: %v", err),
-			ObjectName: input.ObjectName,
+			AllPassed:   false,
+			Details:     fmt.Sprintf("Test execution failed: %v", err),
+			ObjectName:  input.ObjectName,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
 		}, nil
 	}
 
@@ -681,9 +800,12 @@ type SyntaxCheckInput struct {
 
 // SyntaxCheckOutput defines output for syntax-check tool
 type SyntaxCheckOutput struct {
-	HasErrors bool   `json:"has_errors" jsonschema:"Whether syntax errors were found"`
-	Messages  string `json:"messages" jsonschema:"Human-readable syntax check results"`
-	Count     int    `json:"count" jsonschema:"Total number of messages"`
+	HasErrors   bool     `json:"has_errors" jsonschema:"Whether syntax errors were found"`
+	Messages    string   `json:"messages" jsonschema:"Human-readable syntax check results"`
+	Count       int      `json:"count" jsonschema:"Total number of messages"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
 }
 
 // HandleSyntaxCheck performs syntax check via abaper-ts
@@ -717,6 +839,17 @@ func (h *Handlers) HandleSyntaxCheck(ctx context.Context, req *mcp.CallToolReque
 		msgs.WriteString("No syntax errors found.\n")
 	}
 
+	var errorCode string
+	var errorMsgsList []string
+	if hasErrors {
+		errorCode = "SYNTAX_ERROR"
+		for _, m := range result.Messages {
+			if m.Severity == "error" {
+				errorMsgsList = append(errorMsgsList, fmt.Sprintf("Line %d: %s", m.Line, m.Text))
+			}
+		}
+	}
+
 	log.Info("Tool execution completed",
 		zap.Bool("has_errors", hasErrors),
 		zap.Int("message_count", len(result.Messages)),
@@ -724,9 +857,12 @@ func (h *Handlers) HandleSyntaxCheck(ctx context.Context, req *mcp.CallToolReque
 	)
 
 	return nil, SyntaxCheckOutput{
-		HasErrors: hasErrors,
-		Messages:  msgs.String(),
-		Count:     len(result.Messages),
+		HasErrors:   hasErrors,
+		Messages:    msgs.String(),
+		Count:       len(result.Messages),
+		ErrorCode:   errorCode,
+		ErrorDetail: strings.Join(errorMsgsList, "; "),
+		Errors:      errorMsgsList,
 	}, nil
 }
 
@@ -874,4 +1010,11 @@ func (h *Handlers) HandleCreateTransport(ctx context.Context, req *mcp.CallToolR
 		Description:     result.Description,
 		Message:         fmt.Sprintf("Transport %s created successfully", result.TransportNumber),
 	}, nil
+}
+
+func activationStatusString(activated bool) string {
+	if activated {
+		return "activated successfully"
+	}
+	return "saved (activation had errors)"
 }
