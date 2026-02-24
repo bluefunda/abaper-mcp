@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/bluefunda/abaper-mcp/compare/v0.5.0...v0.6.0) (2026-02-24)
+
+
+### Features
+
+* add create-and-activate composite tool (Phase 1) ([#16](https://github.com/bluefunda/abaper-mcp/issues/16)) ([fbdfd74](https://github.com/bluefunda/abaper-mcp/commit/fbdfd747eed343b40b3caebce118a4335326c70f))
+
 ## [0.5.0](https://github.com/bluefunda/abaper-mcp/compare/v0.4.1...v0.5.0) (2026-02-23)
 
 
