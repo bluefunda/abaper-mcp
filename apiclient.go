@@ -96,15 +96,47 @@ type PackageData struct {
 type ActivateData struct {
 	ObjectName string            `json:"object_name"`
 	ObjectType string            `json:"object_type"`
-	Success    bool              `json:"success"`
+	Success    bool              `json:"activated"`
 	Messages   []ActivateMessage `json:"messages"`
 }
 
-// ActivateMessage is a single activation message
+// ActivateMessage is a single activation message.
+// Text may be a string or []string in the JSON response, so we use a custom unmarshaler.
 type ActivateMessage struct {
 	Severity string `json:"severity"`
 	Text     string `json:"text"`
 	Line     int    `json:"line"`
+}
+
+func (m *ActivateMessage) UnmarshalJSON(data []byte) error {
+	// Use an alias to avoid infinite recursion
+	type plain struct {
+		Severity string          `json:"severity"`
+		Text     json.RawMessage `json:"text"`
+		Line     int             `json:"line"`
+	}
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	m.Severity = p.Severity
+	m.Line = p.Line
+
+	// Try string first
+	var s string
+	if err := json.Unmarshal(p.Text, &s); err == nil {
+		m.Text = s
+		return nil
+	}
+	// Try []string
+	var arr []string
+	if err := json.Unmarshal(p.Text, &arr); err == nil {
+		m.Text = strings.Join(arr, " ")
+		return nil
+	}
+	// Fallback: raw string
+	m.Text = string(p.Text)
+	return nil
 }
 
 // UnitTestData is the response from /api/v1/unit-tests
@@ -272,22 +304,57 @@ func (c *APIClient) UpdateObject(objectType, objectName, source string) error {
 }
 
 // Activate activates an ABAP object.
+// Unlike other API calls, activation may return success=false with structured
+// error data (line-number messages). We need to parse the data field even on failure.
 func (c *APIClient) Activate(objectType, objectName string) (*ActivateData, error) {
 	body := map[string]string{
 		"object_type": objectType,
 		"object_name": objectName,
 	}
 
-	data, err := c.post("/api/v1/activate", body)
+	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	var result ActivateData
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse activate result: %w", err)
+	resp, err := c.httpClient.Post(c.baseURL+"/api/v1/activate", "application/json", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("request to /api/v1/activate failed: %w", err)
 	}
-	return &result, nil
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var apiResp apiResponse
+	if err := json.Unmarshal(respBody, &apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response from /api/v1/activate: %w (status %d)", err, resp.StatusCode)
+	}
+
+	// Even when success=false, try to parse the data field for structured messages
+	if apiResp.Data != nil {
+		var result ActivateData
+		if err := json.Unmarshal(apiResp.Data, &result); err == nil {
+			return &result, nil
+		}
+	}
+
+	// No parseable data — return error
+	if !apiResp.Success {
+		return &ActivateData{
+			ObjectName: objectName,
+			ObjectType: objectType,
+			Success:    false,
+			Messages: []ActivateMessage{{
+				Severity: "error",
+				Text:     apiResp.Error,
+			}},
+		}, nil
+	}
+
+	return &ActivateData{ObjectName: objectName, ObjectType: objectType, Success: true}, nil
 }
 
 // RunUnitTests runs ABAP unit tests on an object.
@@ -423,6 +490,8 @@ func normalizeObjectType(input string) string {
 		return "INCL"
 	case "function_group", "fugr":
 		return "FUGR"
+	case "ddls", "cds", "view":
+		return "DDLS"
 	default:
 		return strings.ToUpper(input)
 	}

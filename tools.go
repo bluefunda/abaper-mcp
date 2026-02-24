@@ -90,6 +90,11 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 		Name:        "create-transport",
 		Description: "Create a new transport request for an ABAP object.",
 	}, handlers.HandleCreateTransport)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create-and-activate",
+		Description: "Create or update an ABAP object and activate it in one operation. Supports program, class, interface, include, and CDS view (ddls). Prefer this over separate create + activate calls.",
+	}, handlers.HandleCreateAndActivate)
 }
 
 // --- Existing tool input/output types ---
@@ -1014,4 +1019,198 @@ func activationStatusString(activated bool) string {
 		return "activated successfully"
 	}
 	return "saved (activation had errors)"
+}
+
+// --- Composite tool: create-and-activate ---
+
+// CreateAndActivateInput defines input for the composite create-and-activate tool
+type CreateAndActivateInput struct {
+	ObjectType  string `json:"object_type" jsonschema:"Type of ABAP object (program/class/interface/include/ddls)"`
+	ObjectName  string `json:"object_name" jsonschema:"Name of the ABAP object"`
+	Description string `json:"description,omitempty" jsonschema:"Object description (used on creation only)"`
+	SourceCode  string `json:"source_code" jsonschema:"Complete ABAP source code"`
+	Package     string `json:"package,omitempty" jsonschema:"Package name (defaults to $TMP)"`
+}
+
+// StepResult records one step in the composite operation
+type StepResult struct {
+	Step    string `json:"step"`
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// CreateAndActivateOutput defines output for the composite tool
+type CreateAndActivateOutput struct {
+	Success            bool              `json:"success"`
+	ObjectName         string            `json:"object_name"`
+	ObjectType         string            `json:"object_type"`
+	Action             string            `json:"action"` // created_and_activated, updated_and_activated, activation_failed
+	Steps              []StepResult      `json:"steps"`
+	ActivationMessages []ActivateMessage `json:"activation_messages,omitempty"`
+	Message            string            `json:"message"`
+}
+
+// HandleCreateAndActivate checks existence, creates or updates, and activates in one call
+func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToolRequest, input CreateAndActivateInput) (*mcp.CallToolResult, CreateAndActivateOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "create-and-activate")
+
+	log.Info("Tool execution started",
+		zap.String("object_type", input.ObjectType),
+		zap.String("object_name", input.ObjectName),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	// Validate object type
+	objectType := strings.ToLower(input.ObjectType)
+	validTypes := map[string]bool{
+		"program": true, "prog": true,
+		"class": true, "clas": true,
+		"interface": true, "intf": true,
+		"include": true, "incl": true,
+		"ddls": true, "cds": true, "view": true,
+	}
+	if !validTypes[objectType] {
+		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
+		return nil, CreateAndActivateOutput{
+			Success:    false,
+			ObjectName: input.ObjectName,
+			ObjectType: input.ObjectType,
+			Action:     "validation_failed",
+			Steps:      []StepResult{{Step: "validate", Success: false, Message: fmt.Sprintf("Unsupported object type: %s (must be program, class, interface, include, or ddls)", input.ObjectType)}},
+			Message:    fmt.Sprintf("Unsupported object type: %s. Use create-and-activate only for program, class, interface, include, or ddls/CDS view objects.", input.ObjectType),
+		}, nil
+	}
+
+	adtType := normalizeObjectType(input.ObjectType)
+	pkg := input.Package
+	if pkg == "" {
+		pkg = "$TMP"
+	}
+
+	var steps []StepResult
+	existed := false
+
+	// Step 1: Check existence
+	_, err := h.apiClient.GetObject(adtType, input.ObjectName, "")
+	if err != nil {
+		// Object does not exist — will create
+		steps = append(steps, StepResult{Step: "check_existence", Success: true, Message: "Object does not exist, will create"})
+	} else {
+		existed = true
+		steps = append(steps, StepResult{Step: "check_existence", Success: true, Message: "Object exists, will update"})
+	}
+
+	// Step 2: Create or update
+	if existed {
+		err = h.apiClient.UpdateObject(adtType, input.ObjectName, input.SourceCode)
+		if err != nil {
+			steps = append(steps, StepResult{Step: "update", Success: false, Message: fmt.Sprintf("Update failed: %v", err)})
+			log.Error("Update failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
+			return nil, CreateAndActivateOutput{
+				Success:    false,
+				ObjectName: input.ObjectName,
+				ObjectType: input.ObjectType,
+				Action:     "update_failed",
+				Steps:      steps,
+				Message:    fmt.Sprintf("Failed to update %s: %v", input.ObjectName, err),
+			}, nil
+		}
+		steps = append(steps, StepResult{Step: "update", Success: true, Message: "Source code updated"})
+	} else {
+		desc := input.Description
+		if desc == "" {
+			desc = input.ObjectName
+		}
+		err = h.apiClient.CreateObject(adtType, input.ObjectName, desc, input.SourceCode, pkg)
+		if err != nil {
+			steps = append(steps, StepResult{Step: "create", Success: false, Message: fmt.Sprintf("Create failed: %v", err)})
+			log.Error("Create failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
+			return nil, CreateAndActivateOutput{
+				Success:    false,
+				ObjectName: input.ObjectName,
+				ObjectType: input.ObjectType,
+				Action:     "create_failed",
+				Steps:      steps,
+				Message:    fmt.Sprintf("Failed to create %s: %v", input.ObjectName, err),
+			}, nil
+		}
+		steps = append(steps, StepResult{Step: "create", Success: true, Message: fmt.Sprintf("Object created in package %s", pkg)})
+	}
+
+	// Step 3: Activate
+	activateResult, err := h.apiClient.Activate(adtType, input.ObjectName)
+	if err != nil {
+		steps = append(steps, StepResult{Step: "activate", Success: false, Message: fmt.Sprintf("Activation call failed: %v", err)})
+		log.Error("Activation failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		verb := "created"
+		if existed {
+			verb = "updated"
+		}
+		return nil, CreateAndActivateOutput{
+			Success:    false,
+			ObjectName: input.ObjectName,
+			ObjectType: input.ObjectType,
+			Action:     "activation_failed",
+			Steps:      steps,
+			Message:    fmt.Sprintf("Object %s but activation failed: %v", verb, err),
+		}, nil
+	}
+
+	if !activateResult.Success {
+		// Activation returned errors (syntax errors etc.)
+		var errMsgs []string
+		for _, m := range activateResult.Messages {
+			if m.Line > 0 {
+				errMsgs = append(errMsgs, fmt.Sprintf("[%s] Line %d: %s", m.Severity, m.Line, m.Text))
+			} else {
+				errMsgs = append(errMsgs, fmt.Sprintf("[%s] %s", m.Severity, m.Text))
+			}
+		}
+		steps = append(steps, StepResult{Step: "activate", Success: false, Message: "Activation failed: " + strings.Join(errMsgs, "; ")})
+
+		verb := "created"
+		if existed {
+			verb = "updated"
+		}
+		log.Info("Activation failed with errors",
+			zap.Int("error_count", len(activateResult.Messages)),
+			zap.Duration("duration", time.Since(start)),
+		)
+		return nil, CreateAndActivateOutput{
+			Success:            false,
+			ObjectName:         input.ObjectName,
+			ObjectType:         input.ObjectType,
+			Action:             "activation_failed",
+			Steps:              steps,
+			ActivationMessages: activateResult.Messages,
+			Message:            fmt.Sprintf("Object %s but activation failed with %d error(s):\n%s", verb, len(errMsgs), strings.Join(errMsgs, "\n")),
+		}, nil
+	}
+
+	// Success
+	steps = append(steps, StepResult{Step: "activate", Success: true, Message: "Object activated successfully"})
+
+	action := "created_and_activated"
+	verb := "Created"
+	if existed {
+		action = "updated_and_activated"
+		verb = "Updated"
+	}
+
+	log.Info("Tool execution completed",
+		zap.String("action", action),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, CreateAndActivateOutput{
+		Success:            true,
+		ObjectName:         input.ObjectName,
+		ObjectType:         input.ObjectType,
+		Action:             action,
+		Steps:              steps,
+		ActivationMessages: activateResult.Messages,
+		Message:            fmt.Sprintf("%s and activated %s successfully", verb, input.ObjectName),
+	}, nil
 }
