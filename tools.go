@@ -45,6 +45,11 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 	}, handlers.HandleCreateClass)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create-interface",
+		Description: "Create a new ABAP interface with source code",
+	}, handlers.HandleCreateInterface)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update-program",
 		Description: "Update the source code of an existing ABAP program. Provide complete source code, not diffs.",
 	}, handlers.HandleUpdateProgram)
@@ -53,6 +58,11 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 		Name:        "update-class",
 		Description: "Update the source code of an existing ABAP class. Provide complete source code, not diffs.",
 	}, handlers.HandleUpdateClass)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update-interface",
+		Description: "Update the source code of an existing ABAP interface. Provide complete source code, not diffs.",
+	}, handlers.HandleUpdateInterface)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "activate-object",
@@ -488,6 +498,147 @@ func (h *Handlers) HandleCreateClass(ctx context.Context, req *mcp.CallToolReque
 	return nil, CreateClassOutput{
 		Success: true,
 		Message: "Class created successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// CreateInterfaceInput defines input for create-interface tool
+type CreateInterfaceInput struct {
+	Name        string `json:"name" jsonschema:"Interface name (e.g. ZIF_TEST)"`
+	Description string `json:"description" jsonschema:"Interface description"`
+	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
+	SourceCode  string `json:"source_code" jsonschema:"ABAP interface source code"`
+}
+
+// CreateInterfaceOutput defines output for create-interface tool
+type CreateInterfaceOutput struct {
+	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Created interface name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// HandleCreateInterface creates a new ABAP interface via abaper-ts
+func (h *Handlers) HandleCreateInterface(ctx context.Context, req *mcp.CallToolRequest, input CreateInterfaceInput) (*mcp.CallToolResult, CreateInterfaceOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "create-interface")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.String("package", input.Package),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	// Idempotency guard: check if object already exists
+	existing, _ := h.apiClient.GetObject("INTF", input.Name, "")
+	if existing != nil && existing.Source != "" {
+		// Object exists — switch to update mode
+		err := h.apiClient.UpdateObject("INTF", input.Name, input.SourceCode)
+		if err != nil {
+			log.Error("Failed to update existing interface", zap.Error(err))
+			return nil, CreateInterfaceOutput{
+				Success:     false,
+				Message:     fmt.Sprintf("Interface %s exists but update failed: %v", input.Name, err),
+				Name:        input.Name,
+				ErrorCode:   "SAP_ERROR",
+				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
+				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
+			}, nil
+		}
+
+		// Activate after update
+		activateResult, activateErr := h.apiClient.Activate("INTF", input.Name)
+		activated := activateErr == nil && activateResult != nil && activateResult.Success
+
+		log.Info("Idempotency guard: interface already existed, updated",
+			zap.Bool("activated", activated),
+			zap.Duration("duration", time.Since(start)),
+		)
+
+		return nil, CreateInterfaceOutput{
+			Success: true,
+			Message: fmt.Sprintf("%s already existed — updated and %s",
+				input.Name, activationStatusString(activated)),
+			Name: input.Name,
+		}, nil
+	}
+
+	err := h.apiClient.CreateObject("INTF", input.Name, input.Description, input.SourceCode, input.Package)
+	if err != nil {
+		log.Error("Failed to create interface", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, CreateInterfaceOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to create interface: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, CreateInterfaceOutput{
+		Success: true,
+		Message: "Interface created successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// UpdateInterfaceInput defines input for update-interface tool
+type UpdateInterfaceInput struct {
+	Name       string `json:"name" jsonschema:"Interface name (e.g. ZIF_TEST)"`
+	SourceCode string `json:"source_code" jsonschema:"Complete ABAP interface source code (not diffs)"`
+}
+
+// UpdateInterfaceOutput defines output for update-interface tool
+type UpdateInterfaceOutput struct {
+	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Updated interface name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// HandleUpdateInterface updates an existing ABAP interface via abaper-ts
+func (h *Handlers) HandleUpdateInterface(ctx context.Context, req *mcp.CallToolRequest, input UpdateInterfaceInput) (*mcp.CallToolResult, UpdateInterfaceOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "update-interface")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	err := h.apiClient.UpdateObject("INTF", input.Name, input.SourceCode)
+	if err != nil {
+		log.Error("Failed to update interface", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateInterfaceOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to update interface: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, UpdateInterfaceOutput{
+		Success: true,
+		Message: "Interface updated successfully",
 		Name:    input.Name,
 	}, nil
 }
