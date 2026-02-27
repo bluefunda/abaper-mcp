@@ -35,64 +35,14 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 	}, handlers.HandleTestConnection)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "create-program",
-		Description: "Create a new ABAP program with source code",
-	}, handlers.HandleCreateProgram)
+		Name:        "create-object",
+		Description: "Create a new ABAP object with source code. Supports: program, class, interface, include, ddls (CDS view), srvd (service definition), srvb (service binding), ddlx (metadata extension). If the object already exists, it is updated instead (idempotent).",
+	}, handlers.HandleCreateObject)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "create-class",
-		Description: "Create a new ABAP class with source code",
-	}, handlers.HandleCreateClass)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "create-interface",
-		Description: "Create a new ABAP interface with source code",
-	}, handlers.HandleCreateInterface)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update-program",
-		Description: "Update the source code of an existing ABAP program. Provide complete source code, not diffs.",
-	}, handlers.HandleUpdateProgram)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update-class",
-		Description: "Update the source code of an existing ABAP class. Provide complete source code, not diffs.",
-	}, handlers.HandleUpdateClass)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update-interface",
-		Description: "Update the source code of an existing ABAP interface. Provide complete source code, not diffs.",
-	}, handlers.HandleUpdateInterface)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "create-service-definition",
-		Description: "Create a new ABAP service definition (SRVD) for exposing CDS views as OData services",
-	}, handlers.HandleCreateServiceDefinition)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update-service-definition",
-		Description: "Update the source code of an existing ABAP service definition (SRVD). Provide complete source code, not diffs.",
-	}, handlers.HandleUpdateServiceDefinition)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "create-service-binding",
-		Description: "Create a new ABAP service binding (SRVB) to bind a service definition to an OData protocol (V2 or V4)",
-	}, handlers.HandleCreateServiceBinding)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update-service-binding",
-		Description: "Update an existing ABAP service binding (SRVB). Provide complete source code, not diffs.",
-	}, handlers.HandleUpdateServiceBinding)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "create-metadata-extension",
-		Description: "Create a new ABAP metadata extension (DDLX) for adding UI annotations to CDS views",
-	}, handlers.HandleCreateMetadataExtension)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update-metadata-extension",
-		Description: "Update an existing ABAP metadata extension (DDLX). Provide complete source code, not diffs.",
-	}, handlers.HandleUpdateMetadataExtension)
+		Name:        "update-object",
+		Description: "Update the source code of an existing ABAP object. Provide complete source code, not diffs. Supports: program, class, interface, include, ddls (CDS view), srvd (service definition), srvb (service binding), ddlx (metadata extension).",
+	}, handlers.HandleUpdateObject)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "activate-object",
@@ -358,77 +308,119 @@ func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRe
 	}, nil
 }
 
-// CreateProgramInput defines input for create-program tool
-type CreateProgramInput struct {
-	Name        string `json:"name" jsonschema:"Program name (e.g. ZTEST_PROG)"`
-	Description string `json:"description" jsonschema:"Program description"`
+// CreateObjectInput defines input for the generic create-object tool
+type CreateObjectInput struct {
+	ObjectType  string `json:"object_type" jsonschema:"Type of ABAP object: program, class, interface, include, ddls (CDS view), srvd (service definition), srvb (service binding), ddlx (metadata extension)"`
+	Name        string `json:"name" jsonschema:"Object name (e.g. ZCL_TEST, ZIF_MY_INTF, ZSD_MY_SERVICE)"`
+	Description string `json:"description" jsonschema:"Object description"`
 	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
 	SourceCode  string `json:"source_code" jsonschema:"ABAP source code"`
 }
 
-// CreateProgramOutput defines output for create-program tool
-type CreateProgramOutput struct {
+// CreateObjectOutput defines output for the generic create-object tool
+type CreateObjectOutput struct {
 	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
 	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Created program name"`
+	Name        string   `json:"name" jsonschema:"Created object name"`
+	ObjectType  string   `json:"object_type" jsonschema:"ADT object type used"`
 	ErrorCode   string   `json:"error_code,omitempty"`
 	ErrorDetail string   `json:"error_detail,omitempty"`
 	Errors      []string `json:"errors,omitempty"`
 }
 
-// HandleCreateProgram creates a new ABAP program via abaper-ts
-func (h *Handlers) HandleCreateProgram(ctx context.Context, req *mcp.CallToolRequest, input CreateProgramInput) (*mcp.CallToolResult, CreateProgramOutput, error) {
+// creatableTypes lists all object types supported by create-object and update-object.
+var creatableTypes = map[string]bool{
+	"program": true, "prog": true,
+	"class": true, "clas": true,
+	"interface": true, "intf": true,
+	"include": true, "incl": true,
+	"ddls": true, "cds": true, "view": true,
+	"ddlx": true, "metadata_extension": true,
+	"srvd": true, "service_definition": true,
+	"srvb": true, "service_binding": true,
+}
+
+// HandleCreateObject creates any supported ABAP object type via abaper-ts.
+// If the object already exists, it is updated instead (idempotent).
+func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequest, input CreateObjectInput) (*mcp.CallToolResult, CreateObjectOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
-	log := logger.WithTool(requestID, "create-program")
+	log := logger.WithTool(requestID, "create-object")
+
+	objectType := strings.ToLower(input.ObjectType)
+	if !creatableTypes[objectType] {
+		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
+		return nil, CreateObjectOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, ddls, ddlx, srvd, srvb.", input.ObjectType),
+			Name:        input.Name,
+			ObjectType:  input.ObjectType,
+			ErrorCode:   "INVALID_TYPE",
+			ErrorDetail: fmt.Sprintf("Unsupported object type: %s", input.ObjectType),
+			Errors:      []string{fmt.Sprintf("Unsupported object type: %s", input.ObjectType)},
+		}, nil
+	}
+
+	adtType := normalizeObjectType(input.ObjectType)
 
 	log.Info("Tool execution started",
+		zap.String("object_type", adtType),
 		zap.String("name", input.Name),
 		zap.String("package", input.Package),
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
 	// Idempotency guard: check if object already exists
-	existing, _ := h.apiClient.GetObject("PROG", input.Name, "")
+	existing, _ := h.apiClient.GetObject(adtType, input.Name, "")
 	if existing != nil && existing.Source != "" {
-		// Object exists — switch to update mode
-		err := h.apiClient.UpdateObject("PROG", input.Name, input.SourceCode)
+		err := h.apiClient.UpdateObject(adtType, input.Name, input.SourceCode)
 		if err != nil {
-			log.Error("Failed to update existing program", zap.Error(err))
-			return nil, CreateProgramOutput{
+			log.Error("Failed to update existing object", zap.Error(err))
+			return nil, CreateObjectOutput{
 				Success:     false,
-				Message:     fmt.Sprintf("Program %s exists but update failed: %v", input.Name, err),
+				Message:     fmt.Sprintf("%s %s exists but update failed: %v", adtType, input.Name, err),
 				Name:        input.Name,
+				ObjectType:  adtType,
 				ErrorCode:   "SAP_ERROR",
 				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
 				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
 			}, nil
 		}
 
-		// Activate after update
-		activateResult, activateErr := h.apiClient.Activate("PROG", input.Name)
+		activateResult, activateErr := h.apiClient.Activate(adtType, input.Name)
 		activated := activateErr == nil && activateResult != nil && activateResult.Success
 
-		log.Info("Idempotency guard: program already existed, updated",
+		log.Info("Idempotency guard: object already existed, updated",
 			zap.Bool("activated", activated),
 			zap.Duration("duration", time.Since(start)),
 		)
 
-		return nil, CreateProgramOutput{
+		return nil, CreateObjectOutput{
 			Success: true,
 			Message: fmt.Sprintf("%s already existed \u2014 updated and %s",
 				input.Name, activationStatusString(activated)),
-			Name: input.Name,
+			Name:       input.Name,
+			ObjectType: adtType,
 		}, nil
 	}
 
-	err := h.apiClient.CreateObject("PROG", input.Name, input.Description, input.SourceCode, input.Package)
+	desc := input.Description
+	if desc == "" {
+		desc = input.Name
+	}
+	pkg := input.Package
+	if pkg == "" {
+		pkg = "$TMP"
+	}
+
+	err := h.apiClient.CreateObject(adtType, input.Name, desc, input.SourceCode, pkg)
 	if err != nil {
-		log.Error("Failed to create program", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, CreateProgramOutput{
+		log.Error("Failed to create object", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, CreateObjectOutput{
 			Success:     false,
-			Message:     fmt.Sprintf("Failed to create program: %v", err),
+			Message:     fmt.Sprintf("Failed to create %s %s: %v", adtType, input.Name, err),
 			Name:        input.Name,
+			ObjectType:  adtType,
 			ErrorCode:   "SAP_ERROR",
 			ErrorDetail: fmt.Sprintf("%v", err),
 			Errors:      []string{fmt.Sprintf("%v", err)},
@@ -440,694 +432,68 @@ func (h *Handlers) HandleCreateProgram(ctx context.Context, req *mcp.CallToolReq
 		zap.Duration("duration", time.Since(start)),
 	)
 
-	return nil, CreateProgramOutput{
-		Success: true,
-		Message: "Program created successfully",
-		Name:    input.Name,
+	return nil, CreateObjectOutput{
+		Success:    true,
+		Message:    fmt.Sprintf("%s %s created successfully", adtType, input.Name),
+		Name:       input.Name,
+		ObjectType: adtType,
 	}, nil
 }
 
-// CreateClassInput defines input for create-class tool
-type CreateClassInput struct {
-	Name        string `json:"name" jsonschema:"Class name (e.g. ZCL_TEST)"`
-	Description string `json:"description" jsonschema:"Class description"`
-	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
-	SourceCode  string `json:"source_code" jsonschema:"ABAP class source code"`
-}
-
-// CreateClassOutput defines output for create-class tool
-type CreateClassOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Created class name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleCreateClass creates a new ABAP class via abaper-ts
-func (h *Handlers) HandleCreateClass(ctx context.Context, req *mcp.CallToolRequest, input CreateClassInput) (*mcp.CallToolResult, CreateClassOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "create-class")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.String("package", input.Package),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	// Idempotency guard: check if object already exists
-	existing, _ := h.apiClient.GetObject("CLAS", input.Name, "")
-	if existing != nil && existing.Source != "" {
-		// Object exists — switch to update mode
-		err := h.apiClient.UpdateObject("CLAS", input.Name, input.SourceCode)
-		if err != nil {
-			log.Error("Failed to update existing class", zap.Error(err))
-			return nil, CreateClassOutput{
-				Success:     false,
-				Message:     fmt.Sprintf("Class %s exists but update failed: %v", input.Name, err),
-				Name:        input.Name,
-				ErrorCode:   "SAP_ERROR",
-				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
-				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
-			}, nil
-		}
-
-		// Activate after update
-		activateResult, activateErr := h.apiClient.Activate("CLAS", input.Name)
-		activated := activateErr == nil && activateResult != nil && activateResult.Success
-
-		log.Info("Idempotency guard: class already existed, updated",
-			zap.Bool("activated", activated),
-			zap.Duration("duration", time.Since(start)),
-		)
-
-		return nil, CreateClassOutput{
-			Success: true,
-			Message: fmt.Sprintf("%s already existed \u2014 updated and %s",
-				input.Name, activationStatusString(activated)),
-			Name: input.Name,
-		}, nil
-	}
-
-	err := h.apiClient.CreateObject("CLAS", input.Name, input.Description, input.SourceCode, input.Package)
-	if err != nil {
-		log.Error("Failed to create class", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, CreateClassOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to create class: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, CreateClassOutput{
-		Success: true,
-		Message: "Class created successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// CreateInterfaceInput defines input for create-interface tool
-type CreateInterfaceInput struct {
-	Name        string `json:"name" jsonschema:"Interface name (e.g. ZIF_TEST)"`
-	Description string `json:"description" jsonschema:"Interface description"`
-	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
-	SourceCode  string `json:"source_code" jsonschema:"ABAP interface source code"`
-}
-
-// CreateInterfaceOutput defines output for create-interface tool
-type CreateInterfaceOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Created interface name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleCreateInterface creates a new ABAP interface via abaper-ts
-func (h *Handlers) HandleCreateInterface(ctx context.Context, req *mcp.CallToolRequest, input CreateInterfaceInput) (*mcp.CallToolResult, CreateInterfaceOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "create-interface")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.String("package", input.Package),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	// Idempotency guard: check if object already exists
-	existing, _ := h.apiClient.GetObject("INTF", input.Name, "")
-	if existing != nil && existing.Source != "" {
-		// Object exists — switch to update mode
-		err := h.apiClient.UpdateObject("INTF", input.Name, input.SourceCode)
-		if err != nil {
-			log.Error("Failed to update existing interface", zap.Error(err))
-			return nil, CreateInterfaceOutput{
-				Success:     false,
-				Message:     fmt.Sprintf("Interface %s exists but update failed: %v", input.Name, err),
-				Name:        input.Name,
-				ErrorCode:   "SAP_ERROR",
-				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
-				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
-			}, nil
-		}
-
-		// Activate after update
-		activateResult, activateErr := h.apiClient.Activate("INTF", input.Name)
-		activated := activateErr == nil && activateResult != nil && activateResult.Success
-
-		log.Info("Idempotency guard: interface already existed, updated",
-			zap.Bool("activated", activated),
-			zap.Duration("duration", time.Since(start)),
-		)
-
-		return nil, CreateInterfaceOutput{
-			Success: true,
-			Message: fmt.Sprintf("%s already existed — updated and %s",
-				input.Name, activationStatusString(activated)),
-			Name: input.Name,
-		}, nil
-	}
-
-	err := h.apiClient.CreateObject("INTF", input.Name, input.Description, input.SourceCode, input.Package)
-	if err != nil {
-		log.Error("Failed to create interface", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, CreateInterfaceOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to create interface: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, CreateInterfaceOutput{
-		Success: true,
-		Message: "Interface created successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// UpdateInterfaceInput defines input for update-interface tool
-type UpdateInterfaceInput struct {
-	Name       string `json:"name" jsonschema:"Interface name (e.g. ZIF_TEST)"`
-	SourceCode string `json:"source_code" jsonschema:"Complete ABAP interface source code (not diffs)"`
-}
-
-// UpdateInterfaceOutput defines output for update-interface tool
-type UpdateInterfaceOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Updated interface name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleUpdateInterface updates an existing ABAP interface via abaper-ts
-func (h *Handlers) HandleUpdateInterface(ctx context.Context, req *mcp.CallToolRequest, input UpdateInterfaceInput) (*mcp.CallToolResult, UpdateInterfaceOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "update-interface")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	err := h.apiClient.UpdateObject("INTF", input.Name, input.SourceCode)
-	if err != nil {
-		log.Error("Failed to update interface", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, UpdateInterfaceOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to update interface: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, UpdateInterfaceOutput{
-		Success: true,
-		Message: "Interface updated successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// CreateServiceDefinitionInput defines input for create-service-definition tool
-type CreateServiceDefinitionInput struct {
-	Name        string `json:"name" jsonschema:"Service definition name (e.g. ZSD_MY_SERVICE)"`
-	Description string `json:"description" jsonschema:"Service definition description"`
-	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
-	SourceCode  string `json:"source_code" jsonschema:"ABAP service definition source code"`
-}
-
-// CreateServiceDefinitionOutput defines output for create-service-definition tool
-type CreateServiceDefinitionOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Created service definition name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleCreateServiceDefinition creates a new ABAP service definition via abaper-ts
-func (h *Handlers) HandleCreateServiceDefinition(ctx context.Context, req *mcp.CallToolRequest, input CreateServiceDefinitionInput) (*mcp.CallToolResult, CreateServiceDefinitionOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "create-service-definition")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.String("package", input.Package),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	// Idempotency guard: check if object already exists
-	existing, _ := h.apiClient.GetObject("SRVD", input.Name, "")
-	if existing != nil && existing.Source != "" {
-		err := h.apiClient.UpdateObject("SRVD", input.Name, input.SourceCode)
-		if err != nil {
-			log.Error("Failed to update existing service definition", zap.Error(err))
-			return nil, CreateServiceDefinitionOutput{
-				Success:     false,
-				Message:     fmt.Sprintf("Service definition %s exists but update failed: %v", input.Name, err),
-				Name:        input.Name,
-				ErrorCode:   "SAP_ERROR",
-				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
-				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
-			}, nil
-		}
-
-		activateResult, activateErr := h.apiClient.Activate("SRVD", input.Name)
-		activated := activateErr == nil && activateResult != nil && activateResult.Success
-
-		log.Info("Idempotency guard: service definition already existed, updated",
-			zap.Bool("activated", activated),
-			zap.Duration("duration", time.Since(start)),
-		)
-
-		return nil, CreateServiceDefinitionOutput{
-			Success: true,
-			Message: fmt.Sprintf("%s already existed — updated and %s",
-				input.Name, activationStatusString(activated)),
-			Name: input.Name,
-		}, nil
-	}
-
-	err := h.apiClient.CreateObject("SRVD", input.Name, input.Description, input.SourceCode, input.Package)
-	if err != nil {
-		log.Error("Failed to create service definition", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, CreateServiceDefinitionOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to create service definition: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, CreateServiceDefinitionOutput{
-		Success: true,
-		Message: "Service definition created successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// UpdateServiceDefinitionInput defines input for update-service-definition tool
-type UpdateServiceDefinitionInput struct {
-	Name       string `json:"name" jsonschema:"Service definition name (e.g. ZSD_MY_SERVICE)"`
-	SourceCode string `json:"source_code" jsonschema:"Complete ABAP service definition source code (not diffs)"`
-}
-
-// UpdateServiceDefinitionOutput defines output for update-service-definition tool
-type UpdateServiceDefinitionOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Updated service definition name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleUpdateServiceDefinition updates an existing ABAP service definition via abaper-ts
-func (h *Handlers) HandleUpdateServiceDefinition(ctx context.Context, req *mcp.CallToolRequest, input UpdateServiceDefinitionInput) (*mcp.CallToolResult, UpdateServiceDefinitionOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "update-service-definition")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	err := h.apiClient.UpdateObject("SRVD", input.Name, input.SourceCode)
-	if err != nil {
-		log.Error("Failed to update service definition", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, UpdateServiceDefinitionOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to update service definition: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, UpdateServiceDefinitionOutput{
-		Success: true,
-		Message: "Service definition updated successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// CreateServiceBindingInput defines input for create-service-binding tool
-type CreateServiceBindingInput struct {
-	Name        string `json:"name" jsonschema:"Service binding name (e.g. ZSB_MY_SERVICE)"`
-	Description string `json:"description" jsonschema:"Service binding description"`
-	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
-	SourceCode  string `json:"source_code" jsonschema:"ABAP service binding source code"`
-}
-
-// CreateServiceBindingOutput defines output for create-service-binding tool
-type CreateServiceBindingOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Created service binding name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleCreateServiceBinding creates a new ABAP service binding via abaper-ts
-func (h *Handlers) HandleCreateServiceBinding(ctx context.Context, req *mcp.CallToolRequest, input CreateServiceBindingInput) (*mcp.CallToolResult, CreateServiceBindingOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "create-service-binding")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.String("package", input.Package),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	// Idempotency guard: check if object already exists
-	existing, _ := h.apiClient.GetObject("SRVB", input.Name, "")
-	if existing != nil && existing.Source != "" {
-		err := h.apiClient.UpdateObject("SRVB", input.Name, input.SourceCode)
-		if err != nil {
-			log.Error("Failed to update existing service binding", zap.Error(err))
-			return nil, CreateServiceBindingOutput{
-				Success:     false,
-				Message:     fmt.Sprintf("Service binding %s exists but update failed: %v", input.Name, err),
-				Name:        input.Name,
-				ErrorCode:   "SAP_ERROR",
-				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
-				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
-			}, nil
-		}
-
-		activateResult, activateErr := h.apiClient.Activate("SRVB", input.Name)
-		activated := activateErr == nil && activateResult != nil && activateResult.Success
-
-		log.Info("Idempotency guard: service binding already existed, updated",
-			zap.Bool("activated", activated),
-			zap.Duration("duration", time.Since(start)),
-		)
-
-		return nil, CreateServiceBindingOutput{
-			Success: true,
-			Message: fmt.Sprintf("%s already existed — updated and %s",
-				input.Name, activationStatusString(activated)),
-			Name: input.Name,
-		}, nil
-	}
-
-	err := h.apiClient.CreateObject("SRVB", input.Name, input.Description, input.SourceCode, input.Package)
-	if err != nil {
-		log.Error("Failed to create service binding", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, CreateServiceBindingOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to create service binding: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, CreateServiceBindingOutput{
-		Success: true,
-		Message: "Service binding created successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// UpdateServiceBindingInput defines input for update-service-binding tool
-type UpdateServiceBindingInput struct {
-	Name       string `json:"name" jsonschema:"Service binding name (e.g. ZSB_MY_SERVICE)"`
-	SourceCode string `json:"source_code" jsonschema:"Complete ABAP service binding source code (not diffs)"`
-}
-
-// UpdateServiceBindingOutput defines output for update-service-binding tool
-type UpdateServiceBindingOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Updated service binding name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleUpdateServiceBinding updates an existing ABAP service binding via abaper-ts
-func (h *Handlers) HandleUpdateServiceBinding(ctx context.Context, req *mcp.CallToolRequest, input UpdateServiceBindingInput) (*mcp.CallToolResult, UpdateServiceBindingOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "update-service-binding")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	err := h.apiClient.UpdateObject("SRVB", input.Name, input.SourceCode)
-	if err != nil {
-		log.Error("Failed to update service binding", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, UpdateServiceBindingOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to update service binding: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, UpdateServiceBindingOutput{
-		Success: true,
-		Message: "Service binding updated successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// CreateMetadataExtensionInput defines input for create-metadata-extension tool
-type CreateMetadataExtensionInput struct {
-	Name        string `json:"name" jsonschema:"Metadata extension name (e.g. ZME_MY_VIEW)"`
-	Description string `json:"description" jsonschema:"Metadata extension description"`
-	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
-	SourceCode  string `json:"source_code" jsonschema:"ABAP metadata extension source code"`
-}
-
-// CreateMetadataExtensionOutput defines output for create-metadata-extension tool
-type CreateMetadataExtensionOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Created metadata extension name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleCreateMetadataExtension creates a new ABAP metadata extension via abaper-ts
-func (h *Handlers) HandleCreateMetadataExtension(ctx context.Context, req *mcp.CallToolRequest, input CreateMetadataExtensionInput) (*mcp.CallToolResult, CreateMetadataExtensionOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "create-metadata-extension")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.String("package", input.Package),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	// Idempotency guard: check if object already exists
-	existing, _ := h.apiClient.GetObject("DDLX", input.Name, "")
-	if existing != nil && existing.Source != "" {
-		err := h.apiClient.UpdateObject("DDLX", input.Name, input.SourceCode)
-		if err != nil {
-			log.Error("Failed to update existing metadata extension", zap.Error(err))
-			return nil, CreateMetadataExtensionOutput{
-				Success:     false,
-				Message:     fmt.Sprintf("Metadata extension %s exists but update failed: %v", input.Name, err),
-				Name:        input.Name,
-				ErrorCode:   "SAP_ERROR",
-				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
-				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
-			}, nil
-		}
-
-		activateResult, activateErr := h.apiClient.Activate("DDLX", input.Name)
-		activated := activateErr == nil && activateResult != nil && activateResult.Success
-
-		log.Info("Idempotency guard: metadata extension already existed, updated",
-			zap.Bool("activated", activated),
-			zap.Duration("duration", time.Since(start)),
-		)
-
-		return nil, CreateMetadataExtensionOutput{
-			Success: true,
-			Message: fmt.Sprintf("%s already existed — updated and %s",
-				input.Name, activationStatusString(activated)),
-			Name: input.Name,
-		}, nil
-	}
-
-	err := h.apiClient.CreateObject("DDLX", input.Name, input.Description, input.SourceCode, input.Package)
-	if err != nil {
-		log.Error("Failed to create metadata extension", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, CreateMetadataExtensionOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to create metadata extension: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, CreateMetadataExtensionOutput{
-		Success: true,
-		Message: "Metadata extension created successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// UpdateMetadataExtensionInput defines input for update-metadata-extension tool
-type UpdateMetadataExtensionInput struct {
-	Name       string `json:"name" jsonschema:"Metadata extension name (e.g. ZME_MY_VIEW)"`
-	SourceCode string `json:"source_code" jsonschema:"Complete ABAP metadata extension source code (not diffs)"`
-}
-
-// UpdateMetadataExtensionOutput defines output for update-metadata-extension tool
-type UpdateMetadataExtensionOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Updated metadata extension name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleUpdateMetadataExtension updates an existing ABAP metadata extension via abaper-ts
-func (h *Handlers) HandleUpdateMetadataExtension(ctx context.Context, req *mcp.CallToolRequest, input UpdateMetadataExtensionInput) (*mcp.CallToolResult, UpdateMetadataExtensionOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "update-metadata-extension")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	err := h.apiClient.UpdateObject("DDLX", input.Name, input.SourceCode)
-	if err != nil {
-		log.Error("Failed to update metadata extension", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, UpdateMetadataExtensionOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to update metadata extension: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, UpdateMetadataExtensionOutput{
-		Success: true,
-		Message: "Metadata extension updated successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// UpdateProgramInput defines input for update-program tool
-type UpdateProgramInput struct {
-	Name       string `json:"name" jsonschema:"Program name (e.g. ZTEST_PROG)"`
+// UpdateObjectInput defines input for the generic update-object tool
+type UpdateObjectInput struct {
+	ObjectType string `json:"object_type" jsonschema:"Type of ABAP object: program, class, interface, include, ddls (CDS view), srvd (service definition), srvb (service binding), ddlx (metadata extension)"`
+	Name       string `json:"name" jsonschema:"Object name (e.g. ZCL_TEST, ZIF_MY_INTF, ZSD_MY_SERVICE)"`
 	SourceCode string `json:"source_code" jsonschema:"Complete ABAP source code (not diffs)"`
 }
 
-// UpdateProgramOutput defines output for update-program tool
-type UpdateProgramOutput struct {
+// UpdateObjectOutput defines output for the generic update-object tool
+type UpdateObjectOutput struct {
 	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
 	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Updated program name"`
+	Name        string   `json:"name" jsonschema:"Updated object name"`
+	ObjectType  string   `json:"object_type" jsonschema:"ADT object type used"`
 	ErrorCode   string   `json:"error_code,omitempty"`
 	ErrorDetail string   `json:"error_detail,omitempty"`
 	Errors      []string `json:"errors,omitempty"`
 }
 
-// HandleUpdateProgram updates an existing ABAP program via abaper-ts
-func (h *Handlers) HandleUpdateProgram(ctx context.Context, req *mcp.CallToolRequest, input UpdateProgramInput) (*mcp.CallToolResult, UpdateProgramOutput, error) {
+// HandleUpdateObject updates any supported ABAP object type via abaper-ts.
+func (h *Handlers) HandleUpdateObject(ctx context.Context, req *mcp.CallToolRequest, input UpdateObjectInput) (*mcp.CallToolResult, UpdateObjectOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
-	log := logger.WithTool(requestID, "update-program")
+	log := logger.WithTool(requestID, "update-object")
+
+	objectType := strings.ToLower(input.ObjectType)
+	if !creatableTypes[objectType] {
+		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
+		return nil, UpdateObjectOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, ddls, ddlx, srvd, srvb.", input.ObjectType),
+			Name:        input.Name,
+			ObjectType:  input.ObjectType,
+			ErrorCode:   "INVALID_TYPE",
+			ErrorDetail: fmt.Sprintf("Unsupported object type: %s", input.ObjectType),
+			Errors:      []string{fmt.Sprintf("Unsupported object type: %s", input.ObjectType)},
+		}, nil
+	}
+
+	adtType := normalizeObjectType(input.ObjectType)
 
 	log.Info("Tool execution started",
+		zap.String("object_type", adtType),
 		zap.String("name", input.Name),
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
-	err := h.apiClient.UpdateObject("PROG", input.Name, input.SourceCode)
+	err := h.apiClient.UpdateObject(adtType, input.Name, input.SourceCode)
 	if err != nil {
-		log.Error("Failed to update program", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, UpdateProgramOutput{
+		log.Error("Failed to update object", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateObjectOutput{
 			Success:     false,
-			Message:     fmt.Sprintf("Failed to update program: %v", err),
+			Message:     fmt.Sprintf("Failed to update %s %s: %v", adtType, input.Name, err),
 			Name:        input.Name,
+			ObjectType:  adtType,
 			ErrorCode:   "SAP_ERROR",
 			ErrorDetail: fmt.Sprintf("%v", err),
 			Errors:      []string{fmt.Sprintf("%v", err)},
@@ -1139,62 +505,11 @@ func (h *Handlers) HandleUpdateProgram(ctx context.Context, req *mcp.CallToolReq
 		zap.Duration("duration", time.Since(start)),
 	)
 
-	return nil, UpdateProgramOutput{
-		Success: true,
-		Message: "Program updated successfully",
-		Name:    input.Name,
-	}, nil
-}
-
-// UpdateClassInput defines input for update-class tool
-type UpdateClassInput struct {
-	Name       string `json:"name" jsonschema:"Class name (e.g. ZCL_TEST)"`
-	SourceCode string `json:"source_code" jsonschema:"Complete ABAP class source code (not diffs)"`
-}
-
-// UpdateClassOutput defines output for update-class tool
-type UpdateClassOutput struct {
-	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
-	Message     string   `json:"message" jsonschema:"Result message"`
-	Name        string   `json:"name" jsonschema:"Updated class name"`
-	ErrorCode   string   `json:"error_code,omitempty"`
-	ErrorDetail string   `json:"error_detail,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
-}
-
-// HandleUpdateClass updates an existing ABAP class via abaper-ts
-func (h *Handlers) HandleUpdateClass(ctx context.Context, req *mcp.CallToolRequest, input UpdateClassInput) (*mcp.CallToolResult, UpdateClassOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "update-class")
-
-	log.Info("Tool execution started",
-		zap.String("name", input.Name),
-		zap.Int("source_len", len(input.SourceCode)),
-	)
-
-	err := h.apiClient.UpdateObject("CLAS", input.Name, input.SourceCode)
-	if err != nil {
-		log.Error("Failed to update class", zap.Error(err), zap.Duration("duration", time.Since(start)))
-		return nil, UpdateClassOutput{
-			Success:     false,
-			Message:     fmt.Sprintf("Failed to update class: %v", err),
-			Name:        input.Name,
-			ErrorCode:   "SAP_ERROR",
-			ErrorDetail: fmt.Sprintf("%v", err),
-			Errors:      []string{fmt.Sprintf("%v", err)},
-		}, nil
-	}
-
-	log.Info("Tool execution completed",
-		zap.Bool("success", true),
-		zap.Duration("duration", time.Since(start)),
-	)
-
-	return nil, UpdateClassOutput{
-		Success: true,
-		Message: "Class updated successfully",
-		Name:    input.Name,
+	return nil, UpdateObjectOutput{
+		Success:    true,
+		Message:    fmt.Sprintf("%s %s updated successfully", adtType, input.Name),
+		Name:       input.Name,
+		ObjectType: adtType,
 	}, nil
 }
 

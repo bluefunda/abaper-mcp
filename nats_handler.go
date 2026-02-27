@@ -93,14 +93,10 @@ func (s *NATSMCPServer) routeToolRequest(ctx context.Context, req *MCPToolReques
 		return s.handleListPackages(ctx, req)
 	case "test-connection":
 		return s.handleTestConnection(ctx, req)
-	case "create-program":
-		return s.handleCreateProgram(ctx, req)
-	case "create-class":
-		return s.handleCreateClass(ctx, req)
-	case "update-program":
-		return s.handleUpdateProgram(ctx, req)
-	case "update-class":
-		return s.handleUpdateClass(ctx, req)
+	case "create-object":
+		return s.handleCreateObject(ctx, req)
+	case "update-object":
+		return s.handleUpdateObject(ctx, req)
 	case "activate-object":
 		return s.handleActivateObject(ctx, req)
 	case "run-unit-tests":
@@ -206,80 +202,44 @@ func (s *NATSMCPServer) handleTestConnection(ctx context.Context, req *MCPToolRe
 	return map[string]interface{}{"connected": output.Connected, "message": output.Message}, nil
 }
 
-// handleCreateProgram handles create-program tool request
-func (s *NATSMCPServer) handleCreateProgram(ctx context.Context, req *MCPToolRequest) (map[string]interface{}, error) {
+// handleCreateObject handles create-object tool request
+func (s *NATSMCPServer) handleCreateObject(ctx context.Context, req *MCPToolRequest) (map[string]interface{}, error) {
+	objectType, _ := req.Arguments["object_type"].(string)
 	name, _ := req.Arguments["name"].(string)
 	description, _ := req.Arguments["description"].(string)
 	pkg, _ := req.Arguments["package"].(string)
 	sourceCode, _ := req.Arguments["source_code"].(string)
 
-	if name == "" || description == "" || pkg == "" || sourceCode == "" {
-		return nil, fmt.Errorf("name, description, package, and source_code are required")
+	if objectType == "" || name == "" || sourceCode == "" {
+		return nil, fmt.Errorf("object_type, name, and source_code are required")
 	}
 
-	input := CreateProgramInput{Name: name, Description: description, Package: pkg, SourceCode: sourceCode}
+	input := CreateObjectInput{ObjectType: objectType, Name: name, Description: description, Package: pkg, SourceCode: sourceCode}
 	mcpReq := &mcp.CallToolRequest{}
-	_, output, err := s.handlers.HandleCreateProgram(ctx, mcpReq, input)
+	_, output, err := s.handlers.HandleCreateObject(ctx, mcpReq, input)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{"success": output.Success, "message": output.Message, "name": output.Name}, nil
+	return map[string]interface{}{"success": output.Success, "message": output.Message, "name": output.Name, "object_type": output.ObjectType}, nil
 }
 
-// handleCreateClass handles create-class tool request
-func (s *NATSMCPServer) handleCreateClass(ctx context.Context, req *MCPToolRequest) (map[string]interface{}, error) {
-	name, _ := req.Arguments["name"].(string)
-	description, _ := req.Arguments["description"].(string)
-	pkg, _ := req.Arguments["package"].(string)
-	sourceCode, _ := req.Arguments["source_code"].(string)
-
-	if name == "" || description == "" || pkg == "" || sourceCode == "" {
-		return nil, fmt.Errorf("name, description, package, and source_code are required")
-	}
-
-	input := CreateClassInput{Name: name, Description: description, Package: pkg, SourceCode: sourceCode}
-	mcpReq := &mcp.CallToolRequest{}
-	_, output, err := s.handlers.HandleCreateClass(ctx, mcpReq, input)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]interface{}{"success": output.Success, "message": output.Message, "name": output.Name}, nil
-}
-
-// handleUpdateProgram handles update-program tool request
-func (s *NATSMCPServer) handleUpdateProgram(ctx context.Context, req *MCPToolRequest) (map[string]interface{}, error) {
+// handleUpdateObject handles update-object tool request
+func (s *NATSMCPServer) handleUpdateObject(ctx context.Context, req *MCPToolRequest) (map[string]interface{}, error) {
+	objectType, _ := req.Arguments["object_type"].(string)
 	name, _ := req.Arguments["name"].(string)
 	sourceCode, _ := req.Arguments["source_code"].(string)
 
-	if name == "" || sourceCode == "" {
-		return nil, fmt.Errorf("name and source_code are required")
+	if objectType == "" || name == "" || sourceCode == "" {
+		return nil, fmt.Errorf("object_type, name, and source_code are required")
 	}
 
-	input := UpdateProgramInput{Name: name, SourceCode: sourceCode}
+	input := UpdateObjectInput{ObjectType: objectType, Name: name, SourceCode: sourceCode}
 	mcpReq := &mcp.CallToolRequest{}
-	_, output, err := s.handlers.HandleUpdateProgram(ctx, mcpReq, input)
+	_, output, err := s.handlers.HandleUpdateObject(ctx, mcpReq, input)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{"success": output.Success, "message": output.Message, "name": output.Name}, nil
-}
-
-// handleUpdateClass handles update-class tool request
-func (s *NATSMCPServer) handleUpdateClass(ctx context.Context, req *MCPToolRequest) (map[string]interface{}, error) {
-	name, _ := req.Arguments["name"].(string)
-	sourceCode, _ := req.Arguments["source_code"].(string)
-
-	if name == "" || sourceCode == "" {
-		return nil, fmt.Errorf("name and source_code are required")
-	}
-
-	input := UpdateClassInput{Name: name, SourceCode: sourceCode}
-	mcpReq := &mcp.CallToolRequest{}
-	_, output, err := s.handlers.HandleUpdateClass(ctx, mcpReq, input)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]interface{}{"success": output.Success, "message": output.Message, "name": output.Name}, nil
+	return map[string]interface{}{"success": output.Success, "message": output.Message, "name": output.Name, "object_type": output.ObjectType}, nil
 }
 
 // handleActivateObject handles activate-object tool request
