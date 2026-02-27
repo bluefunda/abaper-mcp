@@ -492,6 +492,12 @@ func normalizeObjectType(input string) string {
 		return "FUGR"
 	case "ddls", "cds", "view":
 		return "DDLS"
+	case "ddlx", "metadata_extension":
+		return "DDLX"
+	case "srvd", "service_definition":
+		return "SRVD"
+	case "srvb", "service_binding":
+		return "SRVB"
 	default:
 		return strings.ToUpper(input)
 	}

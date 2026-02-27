@@ -65,8 +65,38 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 	}, handlers.HandleUpdateInterface)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create-service-definition",
+		Description: "Create a new ABAP service definition (SRVD) for exposing CDS views as OData services",
+	}, handlers.HandleCreateServiceDefinition)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update-service-definition",
+		Description: "Update the source code of an existing ABAP service definition (SRVD). Provide complete source code, not diffs.",
+	}, handlers.HandleUpdateServiceDefinition)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create-service-binding",
+		Description: "Create a new ABAP service binding (SRVB) to bind a service definition to an OData protocol (V2 or V4)",
+	}, handlers.HandleCreateServiceBinding)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update-service-binding",
+		Description: "Update an existing ABAP service binding (SRVB). Provide complete source code, not diffs.",
+	}, handlers.HandleUpdateServiceBinding)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create-metadata-extension",
+		Description: "Create a new ABAP metadata extension (DDLX) for adding UI annotations to CDS views",
+	}, handlers.HandleCreateMetadataExtension)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update-metadata-extension",
+		Description: "Update an existing ABAP metadata extension (DDLX). Provide complete source code, not diffs.",
+	}, handlers.HandleUpdateMetadataExtension)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "activate-object",
-		Description: "Activate an ABAP object (program, class, interface, function group, include). Must be called before running unit tests.",
+		Description: "Activate an ABAP object (program, class, interface, function group, include, ddls, srvd, srvb, ddlx). Must be called before running unit tests.",
 	}, handlers.HandleActivateObject)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -153,6 +183,10 @@ func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest
 		"table": true, "tabl": true,
 		"structure": true, "stru": true,
 		"include": true, "incl": true,
+		"ddls": true, "cds": true, "view": true,
+		"ddlx": true, "metadata_extension": true,
+		"srvd": true, "service_definition": true,
+		"srvb": true, "service_binding": true,
 	}
 	if !validTypes[objectType] {
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
@@ -639,6 +673,423 @@ func (h *Handlers) HandleUpdateInterface(ctx context.Context, req *mcp.CallToolR
 	return nil, UpdateInterfaceOutput{
 		Success: true,
 		Message: "Interface updated successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// CreateServiceDefinitionInput defines input for create-service-definition tool
+type CreateServiceDefinitionInput struct {
+	Name        string `json:"name" jsonschema:"Service definition name (e.g. ZSD_MY_SERVICE)"`
+	Description string `json:"description" jsonschema:"Service definition description"`
+	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
+	SourceCode  string `json:"source_code" jsonschema:"ABAP service definition source code"`
+}
+
+// CreateServiceDefinitionOutput defines output for create-service-definition tool
+type CreateServiceDefinitionOutput struct {
+	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Created service definition name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// HandleCreateServiceDefinition creates a new ABAP service definition via abaper-ts
+func (h *Handlers) HandleCreateServiceDefinition(ctx context.Context, req *mcp.CallToolRequest, input CreateServiceDefinitionInput) (*mcp.CallToolResult, CreateServiceDefinitionOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "create-service-definition")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.String("package", input.Package),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	// Idempotency guard: check if object already exists
+	existing, _ := h.apiClient.GetObject("SRVD", input.Name, "")
+	if existing != nil && existing.Source != "" {
+		err := h.apiClient.UpdateObject("SRVD", input.Name, input.SourceCode)
+		if err != nil {
+			log.Error("Failed to update existing service definition", zap.Error(err))
+			return nil, CreateServiceDefinitionOutput{
+				Success:     false,
+				Message:     fmt.Sprintf("Service definition %s exists but update failed: %v", input.Name, err),
+				Name:        input.Name,
+				ErrorCode:   "SAP_ERROR",
+				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
+				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
+			}, nil
+		}
+
+		activateResult, activateErr := h.apiClient.Activate("SRVD", input.Name)
+		activated := activateErr == nil && activateResult != nil && activateResult.Success
+
+		log.Info("Idempotency guard: service definition already existed, updated",
+			zap.Bool("activated", activated),
+			zap.Duration("duration", time.Since(start)),
+		)
+
+		return nil, CreateServiceDefinitionOutput{
+			Success: true,
+			Message: fmt.Sprintf("%s already existed — updated and %s",
+				input.Name, activationStatusString(activated)),
+			Name: input.Name,
+		}, nil
+	}
+
+	err := h.apiClient.CreateObject("SRVD", input.Name, input.Description, input.SourceCode, input.Package)
+	if err != nil {
+		log.Error("Failed to create service definition", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, CreateServiceDefinitionOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to create service definition: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, CreateServiceDefinitionOutput{
+		Success: true,
+		Message: "Service definition created successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// UpdateServiceDefinitionInput defines input for update-service-definition tool
+type UpdateServiceDefinitionInput struct {
+	Name       string `json:"name" jsonschema:"Service definition name (e.g. ZSD_MY_SERVICE)"`
+	SourceCode string `json:"source_code" jsonschema:"Complete ABAP service definition source code (not diffs)"`
+}
+
+// UpdateServiceDefinitionOutput defines output for update-service-definition tool
+type UpdateServiceDefinitionOutput struct {
+	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Updated service definition name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// HandleUpdateServiceDefinition updates an existing ABAP service definition via abaper-ts
+func (h *Handlers) HandleUpdateServiceDefinition(ctx context.Context, req *mcp.CallToolRequest, input UpdateServiceDefinitionInput) (*mcp.CallToolResult, UpdateServiceDefinitionOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "update-service-definition")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	err := h.apiClient.UpdateObject("SRVD", input.Name, input.SourceCode)
+	if err != nil {
+		log.Error("Failed to update service definition", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateServiceDefinitionOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to update service definition: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, UpdateServiceDefinitionOutput{
+		Success: true,
+		Message: "Service definition updated successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// CreateServiceBindingInput defines input for create-service-binding tool
+type CreateServiceBindingInput struct {
+	Name        string `json:"name" jsonschema:"Service binding name (e.g. ZSB_MY_SERVICE)"`
+	Description string `json:"description" jsonschema:"Service binding description"`
+	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
+	SourceCode  string `json:"source_code" jsonschema:"ABAP service binding source code"`
+}
+
+// CreateServiceBindingOutput defines output for create-service-binding tool
+type CreateServiceBindingOutput struct {
+	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Created service binding name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// HandleCreateServiceBinding creates a new ABAP service binding via abaper-ts
+func (h *Handlers) HandleCreateServiceBinding(ctx context.Context, req *mcp.CallToolRequest, input CreateServiceBindingInput) (*mcp.CallToolResult, CreateServiceBindingOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "create-service-binding")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.String("package", input.Package),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	// Idempotency guard: check if object already exists
+	existing, _ := h.apiClient.GetObject("SRVB", input.Name, "")
+	if existing != nil && existing.Source != "" {
+		err := h.apiClient.UpdateObject("SRVB", input.Name, input.SourceCode)
+		if err != nil {
+			log.Error("Failed to update existing service binding", zap.Error(err))
+			return nil, CreateServiceBindingOutput{
+				Success:     false,
+				Message:     fmt.Sprintf("Service binding %s exists but update failed: %v", input.Name, err),
+				Name:        input.Name,
+				ErrorCode:   "SAP_ERROR",
+				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
+				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
+			}, nil
+		}
+
+		activateResult, activateErr := h.apiClient.Activate("SRVB", input.Name)
+		activated := activateErr == nil && activateResult != nil && activateResult.Success
+
+		log.Info("Idempotency guard: service binding already existed, updated",
+			zap.Bool("activated", activated),
+			zap.Duration("duration", time.Since(start)),
+		)
+
+		return nil, CreateServiceBindingOutput{
+			Success: true,
+			Message: fmt.Sprintf("%s already existed — updated and %s",
+				input.Name, activationStatusString(activated)),
+			Name: input.Name,
+		}, nil
+	}
+
+	err := h.apiClient.CreateObject("SRVB", input.Name, input.Description, input.SourceCode, input.Package)
+	if err != nil {
+		log.Error("Failed to create service binding", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, CreateServiceBindingOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to create service binding: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, CreateServiceBindingOutput{
+		Success: true,
+		Message: "Service binding created successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// UpdateServiceBindingInput defines input for update-service-binding tool
+type UpdateServiceBindingInput struct {
+	Name       string `json:"name" jsonschema:"Service binding name (e.g. ZSB_MY_SERVICE)"`
+	SourceCode string `json:"source_code" jsonschema:"Complete ABAP service binding source code (not diffs)"`
+}
+
+// UpdateServiceBindingOutput defines output for update-service-binding tool
+type UpdateServiceBindingOutput struct {
+	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Updated service binding name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// HandleUpdateServiceBinding updates an existing ABAP service binding via abaper-ts
+func (h *Handlers) HandleUpdateServiceBinding(ctx context.Context, req *mcp.CallToolRequest, input UpdateServiceBindingInput) (*mcp.CallToolResult, UpdateServiceBindingOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "update-service-binding")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	err := h.apiClient.UpdateObject("SRVB", input.Name, input.SourceCode)
+	if err != nil {
+		log.Error("Failed to update service binding", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateServiceBindingOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to update service binding: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, UpdateServiceBindingOutput{
+		Success: true,
+		Message: "Service binding updated successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// CreateMetadataExtensionInput defines input for create-metadata-extension tool
+type CreateMetadataExtensionInput struct {
+	Name        string `json:"name" jsonschema:"Metadata extension name (e.g. ZME_MY_VIEW)"`
+	Description string `json:"description" jsonschema:"Metadata extension description"`
+	Package     string `json:"package" jsonschema:"Package name (use $TMP for local objects)"`
+	SourceCode  string `json:"source_code" jsonschema:"ABAP metadata extension source code"`
+}
+
+// CreateMetadataExtensionOutput defines output for create-metadata-extension tool
+type CreateMetadataExtensionOutput struct {
+	Success     bool     `json:"success" jsonschema:"Whether creation was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Created metadata extension name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// HandleCreateMetadataExtension creates a new ABAP metadata extension via abaper-ts
+func (h *Handlers) HandleCreateMetadataExtension(ctx context.Context, req *mcp.CallToolRequest, input CreateMetadataExtensionInput) (*mcp.CallToolResult, CreateMetadataExtensionOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "create-metadata-extension")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.String("package", input.Package),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	// Idempotency guard: check if object already exists
+	existing, _ := h.apiClient.GetObject("DDLX", input.Name, "")
+	if existing != nil && existing.Source != "" {
+		err := h.apiClient.UpdateObject("DDLX", input.Name, input.SourceCode)
+		if err != nil {
+			log.Error("Failed to update existing metadata extension", zap.Error(err))
+			return nil, CreateMetadataExtensionOutput{
+				Success:     false,
+				Message:     fmt.Sprintf("Metadata extension %s exists but update failed: %v", input.Name, err),
+				Name:        input.Name,
+				ErrorCode:   "SAP_ERROR",
+				ErrorDetail: fmt.Sprintf("Update failed: %v", err),
+				Errors:      []string{fmt.Sprintf("Update failed: %v", err)},
+			}, nil
+		}
+
+		activateResult, activateErr := h.apiClient.Activate("DDLX", input.Name)
+		activated := activateErr == nil && activateResult != nil && activateResult.Success
+
+		log.Info("Idempotency guard: metadata extension already existed, updated",
+			zap.Bool("activated", activated),
+			zap.Duration("duration", time.Since(start)),
+		)
+
+		return nil, CreateMetadataExtensionOutput{
+			Success: true,
+			Message: fmt.Sprintf("%s already existed — updated and %s",
+				input.Name, activationStatusString(activated)),
+			Name: input.Name,
+		}, nil
+	}
+
+	err := h.apiClient.CreateObject("DDLX", input.Name, input.Description, input.SourceCode, input.Package)
+	if err != nil {
+		log.Error("Failed to create metadata extension", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, CreateMetadataExtensionOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to create metadata extension: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, CreateMetadataExtensionOutput{
+		Success: true,
+		Message: "Metadata extension created successfully",
+		Name:    input.Name,
+	}, nil
+}
+
+// UpdateMetadataExtensionInput defines input for update-metadata-extension tool
+type UpdateMetadataExtensionInput struct {
+	Name       string `json:"name" jsonschema:"Metadata extension name (e.g. ZME_MY_VIEW)"`
+	SourceCode string `json:"source_code" jsonschema:"Complete ABAP metadata extension source code (not diffs)"`
+}
+
+// UpdateMetadataExtensionOutput defines output for update-metadata-extension tool
+type UpdateMetadataExtensionOutput struct {
+	Success     bool     `json:"success" jsonschema:"Whether update was successful"`
+	Message     string   `json:"message" jsonschema:"Result message"`
+	Name        string   `json:"name" jsonschema:"Updated metadata extension name"`
+	ErrorCode   string   `json:"error_code,omitempty"`
+	ErrorDetail string   `json:"error_detail,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// HandleUpdateMetadataExtension updates an existing ABAP metadata extension via abaper-ts
+func (h *Handlers) HandleUpdateMetadataExtension(ctx context.Context, req *mcp.CallToolRequest, input UpdateMetadataExtensionInput) (*mcp.CallToolResult, UpdateMetadataExtensionOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "update-metadata-extension")
+
+	log.Info("Tool execution started",
+		zap.String("name", input.Name),
+		zap.Int("source_len", len(input.SourceCode)),
+	)
+
+	err := h.apiClient.UpdateObject("DDLX", input.Name, input.SourceCode)
+	if err != nil {
+		log.Error("Failed to update metadata extension", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return nil, UpdateMetadataExtensionOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Failed to update metadata extension: %v", err),
+			Name:        input.Name,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("%v", err),
+			Errors:      []string{fmt.Sprintf("%v", err)},
+		}, nil
+	}
+
+	log.Info("Tool execution completed",
+		zap.Bool("success", true),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, UpdateMetadataExtensionOutput{
+		Success: true,
+		Message: "Metadata extension updated successfully",
 		Name:    input.Name,
 	}, nil
 }
@@ -1221,6 +1672,9 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 		"interface": true, "intf": true,
 		"include": true, "incl": true,
 		"ddls": true, "cds": true, "view": true,
+		"ddlx": true, "metadata_extension": true,
+		"srvd": true, "service_definition": true,
+		"srvb": true, "service_binding": true,
 	}
 	if !validTypes[objectType] {
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
@@ -1229,8 +1683,8 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 			ObjectName: input.ObjectName,
 			ObjectType: input.ObjectType,
 			Action:     "validation_failed",
-			Steps:      []StepResult{{Step: "validate", Success: false, Message: fmt.Sprintf("Unsupported object type: %s (must be program, class, interface, include, or ddls)", input.ObjectType)}},
-			Message:    fmt.Sprintf("Unsupported object type: %s. Use create-and-activate only for program, class, interface, include, or ddls/CDS view objects.", input.ObjectType),
+			Steps:      []StepResult{{Step: "validate", Success: false, Message: fmt.Sprintf("Unsupported object type: %s", input.ObjectType)}},
+			Message:    fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, ddls, ddlx, srvd, srvb.", input.ObjectType),
 		}, nil
 	}
 
