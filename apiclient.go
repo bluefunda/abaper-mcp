@@ -484,6 +484,8 @@ func normalizeObjectType(input string) string {
 		return "INTF"
 	case "table", "tabl":
 		return "TABL"
+	case "data_element", "dtel":
+		return "DTEL"
 	case "structure", "stru":
 		return "STRU"
 	case "include", "incl":
@@ -492,6 +494,12 @@ func normalizeObjectType(input string) string {
 		return "FUGR"
 	case "ddls", "cds", "view":
 		return "DDLS"
+	case "ddlx", "metadata_extension":
+		return "DDLX"
+	case "srvd", "service_definition":
+		return "SRVD"
+	case "srvb", "service_binding":
+		return "SRVB"
 	default:
 		return strings.ToUpper(input)
 	}
