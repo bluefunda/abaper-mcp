@@ -484,6 +484,8 @@ func normalizeObjectType(input string) string {
 		return "INTF"
 	case "table", "tabl":
 		return "TABL"
+	case "data_element", "dtel":
+		return "DTEL"
 	case "structure", "stru":
 		return "STRU"
 	case "include", "incl":

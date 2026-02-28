@@ -16,7 +16,7 @@ import (
 func registerTools(server *mcp.Server, handlers *Handlers) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get-object",
-		Description: "Retrieve source code for an ABAP object (program, class, function, interface, table, structure, include)",
+		Description: "Retrieve source code for an ABAP object (program, class, function, interface, table, data_element, structure, include)",
 	}, handlers.HandleGetObject)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -36,17 +36,17 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create-object",
-		Description: "Create a new ABAP object with source code. Supports: program, class, interface, include, ddls (CDS view), srvd (service definition), srvb (service binding), ddlx (metadata extension). If the object already exists, it is updated instead (idempotent).",
+		Description: "Create a new ABAP object with source code. Supports: program, class, interface, include, table, data_element, ddls (CDS view), srvd (service definition), srvb (service binding), ddlx (metadata extension). If the object already exists, it is updated instead (idempotent).",
 	}, handlers.HandleCreateObject)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update-object",
-		Description: "Update the source code of an existing ABAP object. Provide complete source code, not diffs. Supports: program, class, interface, include, ddls (CDS view), srvd (service definition), srvb (service binding), ddlx (metadata extension).",
+		Description: "Update the source code of an existing ABAP object. Provide complete source code, not diffs. Supports: program, class, interface, include, table, data_element, ddls (CDS view), srvd (service definition), srvb (service binding), ddlx (metadata extension).",
 	}, handlers.HandleUpdateObject)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "activate-object",
-		Description: "Activate an ABAP object (program, class, interface, function group, include, ddls, srvd, srvb, ddlx). Must be called before running unit tests.",
+		Description: "Activate an ABAP object (program, class, interface, function group, include, table, data_element, ddls, srvd, srvb, ddlx). Must be called before running unit tests.",
 	}, handlers.HandleActivateObject)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -83,7 +83,7 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create-and-activate",
-		Description: "Create or update an ABAP object and activate it in one operation. Supports program, class, interface, include, and CDS view (ddls). Prefer this over separate create + activate calls.",
+		Description: "Create or update an ABAP object and activate it in one operation. Supports program, class, interface, include, table, data_element, ddls, ddlx, srvd, srvb. Prefer this over separate create + activate calls.",
 	}, handlers.HandleCreateAndActivate)
 }
 
@@ -131,6 +131,7 @@ func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest
 		"function": true, "func": true,
 		"interface": true, "intf": true,
 		"table": true, "tabl": true,
+		"data_element": true, "dtel": true,
 		"structure": true, "stru": true,
 		"include": true, "incl": true,
 		"ddls": true, "cds": true, "view": true,
@@ -334,6 +335,8 @@ var creatableTypes = map[string]bool{
 	"class": true, "clas": true,
 	"interface": true, "intf": true,
 	"include": true, "incl": true,
+	"table": true, "tabl": true,
+	"data_element": true, "dtel": true,
 	"ddls": true, "cds": true, "view": true,
 	"ddlx": true, "metadata_extension": true,
 	"srvd": true, "service_definition": true,
@@ -352,7 +355,7 @@ func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequ
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
 		return nil, CreateObjectOutput{
 			Success:     false,
-			Message:     fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, ddls, ddlx, srvd, srvb.", input.ObjectType),
+			Message:     fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, table, data_element, ddls, ddlx, srvd, srvb.", input.ObjectType),
 			Name:        input.Name,
 			ObjectType:  input.ObjectType,
 			ErrorCode:   "INVALID_TYPE",
@@ -469,7 +472,7 @@ func (h *Handlers) HandleUpdateObject(ctx context.Context, req *mcp.CallToolRequ
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
 		return nil, UpdateObjectOutput{
 			Success:     false,
-			Message:     fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, ddls, ddlx, srvd, srvb.", input.ObjectType),
+			Message:     fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, table, data_element, ddls, ddlx, srvd, srvb.", input.ObjectType),
 			Name:        input.Name,
 			ObjectType:  input.ObjectType,
 			ErrorCode:   "INVALID_TYPE",
@@ -547,7 +550,13 @@ func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRe
 		"class": true, "clas": true,
 		"interface": true, "intf": true,
 		"include": true, "incl": true,
+		"table": true, "tabl": true,
+		"data_element": true, "dtel": true,
 		"function_group": true, "fugr": true,
+		"ddls": true, "cds": true, "view": true,
+		"ddlx": true, "metadata_extension": true,
+		"srvd": true, "service_definition": true,
+		"srvb": true, "service_binding": true,
 	}
 	if !validTypes[objectType] {
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
@@ -986,6 +995,8 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 		"class": true, "clas": true,
 		"interface": true, "intf": true,
 		"include": true, "incl": true,
+		"table": true, "tabl": true,
+		"data_element": true, "dtel": true,
 		"ddls": true, "cds": true, "view": true,
 		"ddlx": true, "metadata_extension": true,
 		"srvd": true, "service_definition": true,
@@ -999,7 +1010,7 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 			ObjectType: input.ObjectType,
 			Action:     "validation_failed",
 			Steps:      []StepResult{{Step: "validate", Success: false, Message: fmt.Sprintf("Unsupported object type: %s", input.ObjectType)}},
-			Message:    fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, ddls, ddlx, srvd, srvb.", input.ObjectType),
+			Message:    fmt.Sprintf("Unsupported object type: %s. Supported: program, class, interface, include, table, data_element, ddls, ddlx, srvd, srvb.", input.ObjectType),
 		}, nil
 	}
 
