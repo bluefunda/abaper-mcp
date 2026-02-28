@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/bluefunda/abaper-mcp/compare/v0.6.0...v0.7.0) (2026-02-28)
+
+
+### Features
+
+* generic create/update tools with DDIC support ([#19](https://github.com/bluefunda/abaper-mcp/issues/19)) ([1fe80be](https://github.com/bluefunda/abaper-mcp/commit/1fe80be3f461b0a23086fe1d9fa650e672dfb8e0))
+
 ## [0.6.0](https://github.com/bluefunda/abaper-mcp/compare/v0.5.0...v0.6.0) (2026-02-24)
 
 
