@@ -167,11 +167,32 @@ chore: update dependencies
 
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `security`, `infra`
 
+## Branch Naming
+
+Follow the org convention: `<type>/<short-description>`.
+
+| Type | Example |
+|---|---|
+| `feat/` | `feat/abaper-tools` |
+| `fix/` | `fix/mcp-server-issues` |
+| `chore/` | `chore/remove-beta-deploy` |
+| `docs/` | `docs/add-agents-md` |
+| `infra/` | `infra/add-internal-nats-ca` |
+
+## Pull Request Guidelines
+
+- PR title must use conventional commit format: `feat: ...`, `fix: ...`, `infra: ...`, etc.
+- Scoped titles are encouraged: `feat(tools): add syntax-check tool`.
+- The PR template is defined at org level (`bluefunda/.github` repo). Do not add a repo-level override unless diverging from the org standard.
+- Required sections: Summary, Type (checkbox), Test Plan.
+- Customer Impact is required for `feature`, `performance`, and `security` PRs.
+- Metrics and Marketing Notes are optional.
+- PRs target `main` branch.
+
 ## CI/CD
 
 - **CI:** `.github/workflows/ci.yml` — reusable Go CI from `bluefunda/release-foundry`
 - **Release:** `.github/workflows/release.yml` — release-please + Docker deploy
-- PRs target `main` branch
 - Releases are automated via release-please (conventional commits drive changelog)
 
 ## Environment Variables
