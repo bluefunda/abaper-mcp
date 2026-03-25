@@ -57,7 +57,8 @@ func main() {
 
 	// Initialize configuration — abaper-mcp now calls abaper-ts REST API
 	config := &Config{
-		AbaperTSURL: getEnv("ABAPER_TS_URL", "http://localhost:8080"),
+		AbaperTSURL:   getEnv("ABAPER_TS_URL", "http://localhost:8080"),
+		S4TemporalURL: getEnv("S4_TEMPORAL_URL", ""),
 	}
 
 	// Load secrets from Vault if available (overrides env vars)
@@ -76,6 +77,7 @@ func main() {
 
 	logger.L.Info("Configuration loaded",
 		zap.String("abaper_ts_url", config.AbaperTSURL),
+		zap.String("s4_temporal_url", config.S4TemporalURL),
 	)
 
 	// Create handlers with config
