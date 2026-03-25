@@ -85,6 +85,24 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 		Name:        "create-and-activate",
 		Description: "Create or update an ABAP object and activate it in one operation. Supports program, class, interface, include, table, data_element, ddls, ddlx, srvd, srvb. Prefer this over separate create + activate calls.",
 	}, handlers.HandleCreateAndActivate)
+
+	// S4 batch analysis tools (require S4_TEMPORAL_URL)
+	if handlers.s4Client != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "s4-batch-analyze",
+			Description: "Trigger batch S/4HANA code analysis via Temporal workflow. Processes files from MinIO storage with optional prefix and extension filters.",
+		}, handlers.HandleS4BatchAnalyze)
+
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "s4-workflow-status",
+			Description: "Check the status of an S/4HANA analysis workflow. Returns: RUNNING, COMPLETED, FAILED, CANCELED, or TIMED_OUT.",
+		}, handlers.HandleS4WorkflowStatus)
+
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "s4-workflow-result",
+			Description: "Retrieve the result of a completed S/4HANA analysis workflow.",
+		}, handlers.HandleS4WorkflowResult)
+	}
 }
 
 // --- Existing tool input/output types ---
@@ -1144,4 +1162,153 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 		ActivationMessages: activateResult.Messages,
 		Message:            fmt.Sprintf("%s and activated %s successfully", verb, input.ObjectName),
 	}, nil
+}
+
+// --- S4 batch analysis tools ---
+
+// S4BatchAnalyzeInput defines input for s4-batch-analyze tool
+type S4BatchAnalyzeInput struct {
+	Script string `json:"script" jsonschema:"Script to run (e.g. minio-batch-all.sh, minio-batch-folder.sh, minio-batch-xml.sh)"`
+	Prefix string `json:"prefix,omitempty" jsonschema:"MinIO folder prefix to process (e.g. uploads/test-1/)"`
+	Ext    string `json:"ext,omitempty" jsonschema:"File extension filter (e.g. .xml, .json)"`
+	Bucket string `json:"bucket,omitempty" jsonschema:"MinIO bucket name (uses default if omitted)"`
+}
+
+// S4BatchAnalyzeOutput defines output for s4-batch-analyze tool
+type S4BatchAnalyzeOutput struct {
+	WorkflowID string `json:"workflow_id" jsonschema:"Temporal workflow ID for tracking"`
+	RunID      string `json:"run_id" jsonschema:"Temporal run ID"`
+	Message    string `json:"message" jsonschema:"Human-readable status message"`
+}
+
+// HandleS4BatchAnalyze triggers a batch S/4HANA analysis via s4-temporal
+func (h *Handlers) HandleS4BatchAnalyze(ctx context.Context, req *mcp.CallToolRequest, input S4BatchAnalyzeInput) (*mcp.CallToolResult, S4BatchAnalyzeOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "s4-batch-analyze")
+
+	log.Info("Tool execution started",
+		zap.String("script", input.Script),
+		zap.String("prefix", input.Prefix),
+		zap.String("ext", input.Ext),
+	)
+
+	if input.Script == "" {
+		log.Warn("Validation failed: script is required")
+		return &mcp.CallToolResult{IsError: true}, S4BatchAnalyzeOutput{}, fmt.Errorf("script is required")
+	}
+
+	result, err := h.s4Client.RunScript(S4RunRequest{
+		Script: input.Script,
+		Bucket: input.Bucket,
+		Prefix: input.Prefix,
+		Ext:    input.Ext,
+	})
+	if err != nil {
+		log.Error("Failed to trigger batch analysis", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return &mcp.CallToolResult{IsError: true}, S4BatchAnalyzeOutput{}, fmt.Errorf("failed to trigger batch analysis: %w", err)
+	}
+
+	output := S4BatchAnalyzeOutput{
+		WorkflowID: result.WorkflowID,
+		RunID:      result.RunID,
+		Message:    fmt.Sprintf("Workflow %s started. Use s4-workflow-status to check progress.", result.WorkflowID),
+	}
+
+	log.Info("Tool execution completed",
+		zap.String("workflow_id", result.WorkflowID),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, output, nil
+}
+
+// S4WorkflowStatusInput defines input for s4-workflow-status tool
+type S4WorkflowStatusInput struct {
+	WorkflowID string `json:"workflow_id" jsonschema:"Temporal workflow ID returned by s4-batch-analyze"`
+}
+
+// S4WorkflowStatusOutput defines output for s4-workflow-status tool
+type S4WorkflowStatusOutput struct {
+	WorkflowID string `json:"workflow_id" jsonschema:"Temporal workflow ID"`
+	Status     string `json:"status" jsonschema:"Workflow status: RUNNING, COMPLETED, FAILED, CANCELED, TIMED_OUT"`
+}
+
+// HandleS4WorkflowStatus checks the status of an S4 analysis workflow
+func (h *Handlers) HandleS4WorkflowStatus(ctx context.Context, req *mcp.CallToolRequest, input S4WorkflowStatusInput) (*mcp.CallToolResult, S4WorkflowStatusOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "s4-workflow-status")
+
+	log.Info("Tool execution started",
+		zap.String("workflow_id", input.WorkflowID),
+	)
+
+	if input.WorkflowID == "" {
+		log.Warn("Validation failed: workflow_id is required")
+		return &mcp.CallToolResult{IsError: true}, S4WorkflowStatusOutput{}, fmt.Errorf("workflow_id is required")
+	}
+
+	result, err := h.s4Client.GetStatus(input.WorkflowID)
+	if err != nil {
+		log.Error("Failed to get workflow status", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return &mcp.CallToolResult{IsError: true}, S4WorkflowStatusOutput{}, fmt.Errorf("failed to get workflow status: %w", err)
+	}
+
+	output := S4WorkflowStatusOutput{
+		WorkflowID: result.WorkflowID,
+		Status:     result.Status,
+	}
+
+	log.Info("Tool execution completed",
+		zap.String("status", result.Status),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, output, nil
+}
+
+// S4WorkflowResultInput defines input for s4-workflow-result tool
+type S4WorkflowResultInput struct {
+	WorkflowID string `json:"workflow_id" jsonschema:"Temporal workflow ID returned by s4-batch-analyze"`
+}
+
+// S4WorkflowResultOutput defines output for s4-workflow-result tool
+type S4WorkflowResultOutput struct {
+	WorkflowID string `json:"workflow_id" jsonschema:"Temporal workflow ID"`
+	Result     string `json:"result" jsonschema:"Workflow execution result output"`
+}
+
+// HandleS4WorkflowResult retrieves the result of a completed S4 analysis workflow
+func (h *Handlers) HandleS4WorkflowResult(ctx context.Context, req *mcp.CallToolRequest, input S4WorkflowResultInput) (*mcp.CallToolResult, S4WorkflowResultOutput, error) {
+	requestID := uuid.New().String()[:8]
+	start := time.Now()
+	log := logger.WithTool(requestID, "s4-workflow-result")
+
+	log.Info("Tool execution started",
+		zap.String("workflow_id", input.WorkflowID),
+	)
+
+	if input.WorkflowID == "" {
+		log.Warn("Validation failed: workflow_id is required")
+		return &mcp.CallToolResult{IsError: true}, S4WorkflowResultOutput{}, fmt.Errorf("workflow_id is required")
+	}
+
+	result, err := h.s4Client.GetResult(input.WorkflowID)
+	if err != nil {
+		log.Error("Failed to get workflow result", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		return &mcp.CallToolResult{IsError: true}, S4WorkflowResultOutput{}, fmt.Errorf("failed to get workflow result: %w", err)
+	}
+
+	output := S4WorkflowResultOutput{
+		WorkflowID: result.WorkflowID,
+		Result:     result.Result,
+	}
+
+	log.Info("Tool execution completed",
+		zap.Int("result_len", len(result.Result)),
+		zap.Duration("duration", time.Since(start)),
+	)
+
+	return nil, output, nil
 }
