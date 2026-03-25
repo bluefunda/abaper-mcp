@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/bluefunda/abaper-mcp/compare/v0.7.0...v0.8.0) (2026-03-25)
+
+
+### Features
+
+* **tools:** add S4 batch analysis tools via s4-temporal API ([#24](https://github.com/bluefunda/abaper-mcp/issues/24)) ([eade5e9](https://github.com/bluefunda/abaper-mcp/commit/eade5e9cc4337144bef0ed637913ec6efd810309))
+
 ## [0.7.0](https://github.com/bluefunda/abaper-mcp/compare/v0.6.0...v0.7.0) (2026-02-28)
 
 
