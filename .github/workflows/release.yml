@@ -20,6 +20,4 @@ jobs:
     with:
       tag: ${{ needs.release.outputs.tag_name }}
     secrets:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       GH_PAT: ${{ secrets.GH_PAT }}
