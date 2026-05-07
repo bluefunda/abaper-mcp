@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "abaper": {
+      "command": "/usr/local/bin/abaper-mcp",
+      "env": {
+        "ABAPER_TS_URL": "https://your-abaper-ts-host",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
