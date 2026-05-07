@@ -2,6 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/bluefunda/abaper-mcp.svg)](https://pkg.go.dev/github.com/bluefunda/abaper-mcp)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bluefunda/abaper-mcp)](https://goreportcard.com/report/github.com/bluefunda/abaper-mcp)
 
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for SAP ABAP development. Connects AI assistants (Claude, Cursor, Windsurf) to live SAP systems via the ABAP Development Tools (ADT) REST API.
 
