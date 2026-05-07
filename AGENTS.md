@@ -3,88 +3,70 @@
 ## Project Identity
 
 - **Name:** abaper-mcp
-- **Language:** Go 1.25.6
+- **Language:** Go 1.25
 - **Module:** `github.com/bluefunda/abaper-mcp`
 - **Type:** MCP (Model Context Protocol) server for SAP ABAP operations
 - **Binary:** `abaper-mcp`
 
-## Build & Test (deterministic commands)
+## Build & Test
 
 ```bash
-# Install dependencies
-make install
-
-# Build binary
-make build
-
-# Run all tests
-make test
-
-# Format code (must pass before commit)
-make fmt
-
-# Lint (requires golangci-lint installed)
-make lint
-
-# Build + run locally
-make run
+make build    # Build binary
+make test     # Run tests
+make fmt      # Format code (must pass before commit)
+make lint     # Lint (requires golangci-lint)
 ```
 
-All commands are idempotent and safe to run repeatedly.
+All four commands must pass before any change is considered complete.
 
-## Architecture (read-only context)
+## Architecture
 
 ```
-AI Assistant (Claude Desktop / CAI)
-  → MCP Protocol (stdio / SSE / NATS)
-    → abaper-mcp (this repo)
+AI assistant (Claude Desktop / Cursor / Windsurf)
+  → MCP protocol (stdio or HTTP/SSE)
+    → abaper-mcp  ← this repo
       → abaper-ts REST API (ABAPER_TS_URL)
-        → SAP System (ADT)
+        → SAP system (ADT)
 ```
 
 **Critical constraint:** abaper-mcp does NOT connect to SAP directly. All SAP/ADT calls are delegated to the `abaper-ts` REST backend via `APIClient`. The only required runtime config is `ABAPER_TS_URL`.
 
-### Operational Modes
+## Operational Modes
 
-Set via `ABAPER_MODE` env var:
+Set via `ABAPER_MODE`:
 
 | Mode | Transport | Default |
 |------|-----------|---------|
-| `stdio` | Standard I/O (Claude Desktop) | Yes |
+| `stdio` | Standard I/O (Claude Desktop, Claude Code) | Yes |
 | `sse` | HTTP/SSE on `:8015` | |
-| `nats` | NATS messaging | |
-| `dual` | stdio + NATS | |
 
 ## File Map
 
 | File | Responsibility | Safe to modify |
 |------|---------------|----------------|
 | `main.go` | Entry point, mode routing, server wiring | Cautiously |
-| `config.go` | Config struct (`AbaperTSURL`, NATS fields), validation | Yes |
+| `config.go` | Config struct (`AbaperTSURL`), validation | Yes |
 | `handlers.go` | `Handlers` struct (holds `Config` + `APIClient`) | Yes |
 | `tools.go` | **All MCP tool definitions, input/output types, and handler implementations** | Yes — primary extension point |
 | `apiclient.go` | HTTP client for abaper-ts REST API (`APIClient`) | Yes |
 | `resources.go` | MCP resource templates (`abap://class/{name}`, etc.) | Yes |
 | `prompts.go` | MCP prompt definitions and handlers | Yes |
-| `nats_handler.go` | NATS transport for MCP | Cautiously |
-| `nats_config.go` | NATS connection config | Cautiously |
 | `s4_remediation.go` | S/4HANA compatibility analysis (pattern-based, local) | Yes |
 | `s4_remediation_test.go` | Tests for S/4 remediation | Yes |
 | `s4_remediation_patterns.json` | Pattern data for S/4 analysis | Yes |
-| `vault.go` | HashiCorp Vault secrets loading | Cautiously |
 | `internal/logger/logger.go` | Structured logging (zap) — global `logger.L` | Rarely |
 
 ### Files you must NOT modify without explicit request
 
-- `.github/workflows/*` — CI/CD pipelines (reusable workflows from `bluefunda/release-foundry`)
+- `.github/workflows/*` — CI/CD pipelines
 - `.goreleaser.yml` — release configuration
-- `go.sum` — auto-managed by Go toolchain
+- `go.sum` — auto-managed
 - `Dockerfile` — production deployment
 - `LICENSE`
 
 ## Package Structure
 
-Everything is `package main` except `internal/logger`. There are no sub-packages for tools, resources, or prompts. Do not introduce new packages without explicit request.
+Everything is `package main` except `internal/logger`. Do not introduce new packages without explicit request.
 
 ## How to Add a Tool
 
@@ -102,9 +84,11 @@ Everything is `package main` except `internal/logger`. There are no sub-packages
    ```go
    func (h *Handlers) HandleMyTool(ctx context.Context, req *mcp.CallToolRequest,
        input MyToolInput) (*mcp.CallToolResult, MyToolOutput, error) {
+       requestID := uuid.New().String()[:8]
+       log := logger.WithTool(requestID, "my-tool")
+       log.Info("my-tool start", zap.String("name", input.Name))
        // Use h.apiClient for abaper-ts calls
-       // Return (&mcp.CallToolResult{IsError: true}, zero, err) on failure
-       // Return (nil, output, nil) on success
+       return nil, output, nil
    }
    ```
 
@@ -135,10 +119,6 @@ server.AddResourceTemplate(&mcp.ResourceTemplate{
 }, handlers.HandleMyTypeResource)
 ```
 
-## How to Add a Prompt
-
-In `prompts.go`, register a prompt with arguments and implement the handler.
-
 ## API Client Usage
 
 `APIClient` in `apiclient.go` wraps HTTP calls to abaper-ts. All responses follow the envelope:
@@ -146,15 +126,21 @@ In `prompts.go`, register a prompt with arguments and implement the handler.
 {"success": true, "data": {...}, "error": "..."}
 ```
 
-Methods: `post(path, body)` returns `json.RawMessage` (the `data` field) or error. Add new abaper-ts endpoint methods on `APIClient`.
+Add new abaper-ts endpoint methods directly on `APIClient`.
 
 ## Testing
 
 - Run: `make test`
 - Test files: `*_test.go` in root package
-- Currently only `s4_remediation_test.go` exists
 - Tests do not require a running SAP system or abaper-ts instance
-- When adding features, add corresponding `*_test.go` files
+- Add `*_test.go` files for any new or modified code
+
+## Code Conventions
+
+- All `.go` files must have the Apache 2.0 license header (`// Copyright 2025 bluefunda // Licensed under...`)
+- Use `logger.L` (zap) for logging — never `fmt.Println`
+- Normalize object types with `normalizeObjectType()` before API calls
+- Object names and types are always uppercased before API calls
 
 ## Commit Conventions
 
@@ -169,42 +155,27 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `sec
 
 ## Branch Naming
 
-Follow the org convention: `<type>/<short-description>`.
-
-| Type | Example |
-|---|---|
-| `feat/` | `feat/abaper-tools` |
-| `fix/` | `fix/mcp-server-issues` |
-| `chore/` | `chore/remove-beta-deploy` |
-| `docs/` | `docs/add-agents-md` |
-| `infra/` | `infra/add-internal-nats-ca` |
+`<type>/<short-description>` — e.g., `feat/add-transport-tool`, `fix/missing-object-error`
 
 ## Pull Request Guidelines
 
-- PR title must use conventional commit format: `feat: ...`, `fix: ...`, `infra: ...`, etc.
-- Scoped titles are encouraged: `feat(tools): add syntax-check tool`.
-- The PR template is defined at org level (`bluefunda/.github` repo). Do not add a repo-level override unless diverging from the org standard.
-- Required sections: Summary, Type (checkbox), Test Plan.
-- Customer Impact is required for `feature`, `performance`, and `security` PRs.
-- Metrics and Marketing Notes are optional.
-- PRs target `main` branch.
+- PR title must use conventional commit format
+- PRs target `main`, squash-merged
+- The PR template is at org level (`bluefunda/.github`)
 
 ## CI/CD
 
 - **CI:** `.github/workflows/ci.yml` — reusable Go CI from `bluefunda/release-foundry`
-- **Release:** `.github/workflows/release.yml` — release-please + Docker deploy
-- Releases are automated via release-please (conventional commits drive changelog)
+- **Release:** `.github/workflows/release.yml` — release-please + Docker deploy to `ghcr.io`
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ABAPER_TS_URL` | Yes | `http://localhost:8080` | abaper-ts REST API URL |
-| `ABAPER_MODE` | No | `stdio` | Operational mode |
-| `LOG_LEVEL` | No | `info` | debug/info/warn/error |
-| `LOG_FORMAT` | No | `json` | json/console |
-
-See `.env.template` for full list including NATS and Vault options.
+| `ABAPER_MODE` | No | `stdio` | `stdio` or `sse` |
+| `LOG_LEVEL` | No | `info` | `debug`/`info`/`warn`/`error` |
+| `LOG_FORMAT` | No | `json` | `json`/`console` |
 
 ## Do NOT
 
@@ -212,5 +183,4 @@ See `.env.template` for full list including NATS and Vault options.
 - Introduce new Go packages without explicit request
 - Modify CI/CD workflows without explicit request
 - Add `.env` or credentials to version control
-- Change the MCP SDK version without testing all transports
 - Use `fmt.Println` for logging — use `logger.L` (zap)

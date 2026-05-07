@@ -17,7 +17,7 @@ make lint     # Lint
 
 ## Modes
 
-Set via `ABAPER_MODE`: `stdio` (default, Claude Desktop), `sse` (HTTP on :8015), `nats`, `dual` (stdio+NATS).
+Set via `ABAPER_MODE`: `stdio` (default, Claude Desktop / Claude Code), `sse` (HTTP/SSE on :8015).
 
 ## Architecture
 
@@ -37,6 +37,7 @@ Everything is `package main` except `internal/logger`. Do not introduce new pack
 - Every handler gets `requestID` via `uuid.New().String()[:8]` and scoped logger
 - Use `logger.L` (zap) for logging — never `fmt.Println`
 - Normalize object types with `normalizeObjectType()` before API calls
+- All `.go` files must carry the Apache 2.0 license header
 
 ## Conventions
 

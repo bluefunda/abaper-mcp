@@ -1,0 +1,16 @@
+services:
+  abaper-mcp:
+    image: ghcr.io/bluefunda/abaper-mcp:latest
+    ports:
+      - "8015:8015"
+    environment:
+      ABAPER_MODE: sse
+      ABAPER_TS_URL: http://abaper-ts:8080
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8015/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
