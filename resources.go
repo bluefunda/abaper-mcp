@@ -243,9 +243,9 @@ func (h *Handlers) HandlePackagesResource(ctx context.Context, req *mcp.ReadReso
 	var content strings.Builder
 	content.WriteString("# ABAP Packages\n\n")
 	for _, pkg := range packages {
-		content.WriteString(fmt.Sprintf("## %s\n", pkg.Name))
+		fmt.Fprintf(&content, "## %s\n", pkg.Name)
 		if pkg.Description != "" {
-			content.WriteString(fmt.Sprintf("%s\n", pkg.Description))
+			fmt.Fprintf(&content, "%s\n", pkg.Description)
 		}
 		content.WriteString("\n")
 	}
@@ -272,9 +272,9 @@ func extractNameFromURI(uri, prefix string) string {
 // formatSourceCode formats source code with metadata
 func formatSourceCode(name, objType, description, sourceCode string) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("* ABAP %s: %s\n", objType, name))
+	fmt.Fprintf(&sb, "* ABAP %s: %s\n", objType, name)
 	if description != "" {
-		sb.WriteString(fmt.Sprintf("* Description: %s\n", description))
+		fmt.Fprintf(&sb, "* Description: %s\n", description)
 	}
 	sb.WriteString("*" + strings.Repeat("-", 70) + "\n\n")
 	sb.WriteString(sourceCode)
