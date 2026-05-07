@@ -1,5 +1,8 @@
 # ABAPER MCP Server
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/bluefunda/abaper-mcp.svg)](https://pkg.go.dev/github.com/bluefunda/abaper-mcp)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 A Model Context Protocol (MCP) server for SAP ABAP development, built with the official Go SDK. This server enables AI assistants like Claude to interact with SAP ABAP systems through the ABAP Development Tools (ADT) REST API.
 
 ## Overview
@@ -57,6 +60,12 @@ Pre-configured workflows for ABAP development:
 - Go 1.23 or higher
 - Access to an SAP system with ADT enabled
 - SAP credentials with appropriate permissions
+
+### go install
+
+```bash
+go install github.com/bluefunda/abaper-mcp@latest
+```
 
 ### Build from Source
 
