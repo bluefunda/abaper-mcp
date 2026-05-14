@@ -21,3 +21,12 @@ jobs:
       tag: ${{ needs.release.outputs.tag_name }}
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
+
+  release-notes:
+    needs: [release]
+    if: ${{ needs.release.outputs.release_created }}
+    uses: bluefunda/release-foundry/.github/workflows/github-release-notes.yml@main
+    with:
+      tag: ${{ needs.release.outputs.tag_name }}
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
