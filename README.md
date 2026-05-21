@@ -152,4 +152,4 @@ Everything is `package main`. Do not introduce sub-packages.
 
 Apache 2.0 — see [LICENSE](LICENSE).
 
-Authored by Amish Kushwaha, open-sourced under Apache 2.0 by BlueFunda, Inc.
+Authored by Phani Puttabakula, open-sourced under Apache 2.0 by BlueFunda, Inc.
