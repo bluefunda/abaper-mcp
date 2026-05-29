@@ -89,7 +89,8 @@ type S4RemediationIssue struct {
 // AnalyzeS4RemediationInput defines input for analyze-s4-remediation tool
 type AnalyzeS4RemediationInput struct {
 	ObjectType    string `json:"object_type" jsonschema:"Type of ABAP object (program/class/function/interface)"`
-	ObjectName    string `json:"object_name" jsonschema:"Name of the ABAP object to analyze"`
+	ObjectName    string `json:"object_name,omitempty" jsonschema:"Name of the ABAP object in SAP to fetch and analyze. Required if source_code is not provided."`
+	SourceCode    string `json:"source_code,omitempty" jsonschema:"ABAP source code to analyze directly (pasted or uploaded). Use this instead of object_name when the code is provided inline."`
 	FunctionGroup string `json:"function_group,omitempty" jsonschema:"Function group name (required for function modules)"`
 	OutputFormat  string `json:"output_format,omitempty" jsonschema:"Output format: json (default) or markdown"`
 }
@@ -388,33 +389,55 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 		zap.String("output_format", input.OutputFormat),
 	)
 
+	// Validate: need either source_code or object_name
+	if input.SourceCode == "" && input.ObjectName == "" {
+		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("either source_code or object_name is required")
+	}
+
 	objectType := strings.ToLower(input.ObjectType)
-
-	// Validate function group requirement
-	if (objectType == "function" || objectType == "func") && input.FunctionGroup == "" {
-		log.Warn("Validation failed: function_group required")
-		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("function_group is required for function modules")
+	if objectType == "" {
+		objectType = "program"
 	}
 
-	// Validate object type
-	validTypes := map[string]bool{
-		"program": true, "prog": true,
-		"class": true, "clas": true,
-		"function": true, "func": true,
-		"interface": true, "intf": true,
-		"include": true, "incl": true,
-	}
-	if !validTypes[objectType] {
-		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
-		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
-	}
+	var sourceCode string
+	var artifactName string
 
-	// Fetch source code via abaper-ts
-	adtType := normalizeObjectType(input.ObjectType)
-	objResult, err := h.apiClient.GetObject(adtType, input.ObjectName, input.FunctionGroup)
-	if err != nil {
-		log.Error("Failed to get object", zap.Error(err))
-		return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get object: %w", err)
+	if input.SourceCode != "" {
+		// Use provided source code directly — no SAP ADT call needed
+		sourceCode = input.SourceCode
+		artifactName = input.ObjectName // may be empty, that's fine
+		log.Info("Analyzing provided source code directly",
+			zap.Int("source_length", len(sourceCode)),
+		)
+	} else {
+		// Validate function group requirement for SAP fetch
+		if (objectType == "function" || objectType == "func") && input.FunctionGroup == "" {
+			log.Warn("Validation failed: function_group required")
+			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("function_group is required for function modules")
+		}
+
+		// Validate object type
+		validTypes := map[string]bool{
+			"program": true, "prog": true,
+			"class": true, "clas": true,
+			"function": true, "func": true,
+			"interface": true, "intf": true,
+			"include": true, "incl": true,
+		}
+		if !validTypes[objectType] {
+			log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
+			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
+		}
+
+		// Fetch source code from SAP via abaper-ts
+		adtType := normalizeObjectType(input.ObjectType)
+		objResult, err := h.apiClient.GetObject(adtType, input.ObjectName, input.FunctionGroup)
+		if err != nil {
+			log.Error("Failed to get object", zap.Error(err))
+			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get object: %w", err)
+		}
+		sourceCode = objResult.Source
+		artifactName = input.ObjectName
 	}
 
 	// Load patterns
@@ -424,7 +447,7 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 	}
 
 	// Analyze the code
-	issues := analyzeCode(objResult.Source, patterns)
+	issues := analyzeCode(sourceCode, patterns)
 
 	// Ensure issues is never nil
 	if issues == nil {
@@ -456,7 +479,7 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 			Analyst:       "Claude",
 		},
 		Artifact: ArtifactInfo{
-			ArtifactName:     input.ObjectName,
+			ArtifactName:     artifactName,
 			ArtifactType:     artifactTypeDisplay,
 			Package:          "",
 			TransportRequest: "",
