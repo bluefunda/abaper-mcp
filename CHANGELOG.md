@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/bluefunda/abaper-mcp/compare/v0.9.1...v0.9.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* redeploy with source_code support in analyze-s4-remediation ([#47](https://github.com/bluefunda/abaper-mcp/issues/47)) ([18764db](https://github.com/bluefunda/abaper-mcp/commit/18764db896723802e7e0ecf297a1749c85663bcf))
+
 ## [0.9.1](https://github.com/bluefunda/abaper-mcp/compare/v0.9.0...v0.9.1) (2026-06-02)
 
 
