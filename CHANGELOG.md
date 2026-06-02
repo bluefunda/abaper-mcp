@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/bluefunda/abaper-mcp/compare/v0.9.0...v0.9.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* add gitops-repo input for docker-deploy gitops update ([8a6db3b](https://github.com/bluefunda/abaper-mcp/commit/8a6db3bec77fbc3b9bbbd0dae6d8a26ecddca06f))
+* add goprivate for private bluefunda module access in CI ([1844476](https://github.com/bluefunda/abaper-mcp/commit/1844476ae4dfd4507045290c08e39c93dd40af30))
+
 ## [0.9.0](https://github.com/bluefunda/abaper-mcp/compare/v0.8.0...v0.9.0) (2026-05-29)
 
 
