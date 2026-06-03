@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/bluefunda/abaper-mcp/compare/v0.9.2...v0.10.0) (2026-06-03)
+
+
+### Features
+
+* **s4:** add remediation patterns P004-P010 ([dc98018](https://github.com/bluefunda/abaper-mcp/commit/dc9801852f5735e6f12125c3b6301a1cdf4a6ff6))
+
 ## [0.9.2](https://github.com/bluefunda/abaper-mcp/compare/v0.9.1...v0.9.2) (2026-06-02)
 
 
