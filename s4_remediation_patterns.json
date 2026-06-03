@@ -32,6 +32,76 @@
       "fix": "Use CDS I_UniversalJournal",
       "before_code": "SELECT * FROM bsis INTO TABLE lt_bsis.",
       "after_code": "SELECT * FROM I_UniversalJournal INTO TABLE lt_bsis WHERE ..."
+    },
+    {
+      "id": "P004",
+      "title": "CREATE OBJECT (obsolete instantiation syntax)",
+      "category": "Obsolete Syntax",
+      "symptoms": ["CREATE OBJECT used"],
+      "reason": "Replaced by NEW operator in ABAP 7.40+",
+      "fix": "Replace CREATE OBJECT with NEW operator",
+      "before_code": "CREATE OBJECT lo_obj TYPE zcl_my_class.",
+      "after_code": "DATA(lo_obj) = NEW zcl_my_class( )."
+    },
+    {
+      "id": "P005",
+      "title": "MOVE-CORRESPONDING (obsolete statement)",
+      "category": "Obsolete Syntax",
+      "symptoms": ["MOVE-CORRESPONDING used"],
+      "reason": "Replaced by CORRESPONDING # operator",
+      "fix": "Replace MOVE-CORRESPONDING with CORRESPONDING # operator",
+      "before_code": "MOVE-CORRESPONDING ls_source TO ls_target.",
+      "after_code": "ls_target = CORRESPONDING #( ls_source )."
+    },
+    {
+      "id": "P006",
+      "title": "String concatenation with && operator",
+      "category": "Obsolete Syntax",
+      "symptoms": ["used"],
+      "reason": "&& replaced by string templates",
+      "fix": "Replace && concatenation with string templates",
+      "before_code": "lv_text = lv_a && ' ' && lv_b.",
+      "after_code": "lv_text = |{ lv_a } { lv_b }|."
+    },
+    {
+      "id": "P007",
+      "title": "CALL METHOD (obsolete method call syntax)",
+      "category": "Obsolete Syntax",
+      "symptoms": ["CALL METHOD used"],
+      "reason": "Replaced by functional method call syntax",
+      "fix": "Replace CALL METHOD with direct functional call",
+      "before_code": "CALL METHOD lo_obj->do_something( ).",
+      "after_code": "lo_obj->do_something( )."
+    },
+    {
+      "id": "P008",
+      "title": "SELECT * (non-selective field fetch)",
+      "category": "Performance Anti-Pattern",
+      "symptoms": ["SELECT * used"],
+      "reason": "SELECT * is a performance anti-pattern; select only needed fields",
+      "fix": "Specify only required fields in SELECT",
+      "before_code": "SELECT * FROM sflight INTO TABLE lt_data.",
+      "after_code": "SELECT carrid connid fldate FROM sflight INTO TABLE @DATA(lt_data)."
+    },
+    {
+      "id": "P009",
+      "title": "TRANSLATE statement (obsolete string operation)",
+      "category": "Obsolete Syntax",
+      "symptoms": ["TRANSLATE used"],
+      "reason": "Replaced by to_upper/to_lower built-in functions",
+      "fix": "Replace TRANSLATE with to_upper( ) or to_lower( )",
+      "before_code": "TRANSLATE lv_text TO UPPER CASE.",
+      "after_code": "lv_text = to_upper( lv_text )."
+    },
+    {
+      "id": "P010",
+      "title": "ADD/SUBTRACT statements (obsolete arithmetic)",
+      "category": "Obsolete Syntax",
+      "symptoms": ["ADD used"],
+      "reason": "Replaced by += operator",
+      "fix": "Replace ADD/SUBTRACT with += / -= operators",
+      "before_code": "ADD 1 TO lv_count.",
+      "after_code": "lv_count += 1."
     }
   ]
 }
