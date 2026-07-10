@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/bluefunda/abaper-mcp/internal/logger"
@@ -518,6 +519,243 @@ func TestCreateAndActivateTool(t *testing.T) {
 		})
 		if out.Success || out.Action != "create_failed" {
 			t.Errorf("expected Success=false, Action=create_failed, got %+v", out)
+		}
+	})
+}
+
+func TestRunUnitTestsTool(t *testing.T) {
+	t.Run("all passed", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
+			"object_name": "ZCL_FOO",
+			"total_tests": 2,
+			"passed":      2,
+			"failed":      0,
+			"all_passed":  true,
+			"test_classes": []map[string]any{
+				{"name": "LTCL_TEST", "methods": []map[string]any{
+					{"name": "test_ok", "status": "passed"},
+					{"name": "test_ok2", "status": "passed"},
+				}},
+			},
+		}, ""))
+
+		out, res := callTool[RunUnitTestsOutput](t, session, "run-unit-tests", map[string]any{
+			"object_type": "class",
+			"object_name": "ZCL_FOO",
+		})
+		if res.IsError {
+			t.Fatalf("unexpected tool error: %+v", res)
+		}
+		if !out.AllPassed || out.TotalTests != 2 || out.Passed != 2 {
+			t.Errorf("unexpected result: %+v", out)
+		}
+		if !strings.Contains(out.Details, "LTCL_TEST") || !strings.Contains(out.Details, "PASS") {
+			t.Errorf("expected human-readable details to include the test class/status, got: %s", out.Details)
+		}
+	})
+
+	t.Run("some failed", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
+			"object_name": "ZCL_FOO",
+			"total_tests": 2,
+			"passed":      1,
+			"failed":      1,
+			"all_passed":  false,
+			"test_classes": []map[string]any{
+				{"name": "LTCL_TEST", "methods": []map[string]any{
+					{"name": "test_ok", "status": "passed"},
+					{"name": "test_bad", "status": "failed", "message": "assertion failed"},
+				}},
+			},
+		}, ""))
+
+		out, res := callTool[RunUnitTestsOutput](t, session, "run-unit-tests", map[string]any{
+			"object_type": "class",
+			"object_name": "ZCL_FOO",
+		})
+		if res.IsError {
+			t.Fatalf("unexpected tool error: %+v", res)
+		}
+		if out.AllPassed || out.Failed != 1 {
+			t.Errorf("unexpected result: %+v", out)
+		}
+		if !strings.Contains(out.Details, "FAIL") || !strings.Contains(out.Details, "assertion failed") {
+			t.Errorf("expected failure detail in output, got: %s", out.Details)
+		}
+	})
+
+	t.Run("unsupported type", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{}, ""))
+		_, res := callTool[RunUnitTestsOutput](t, session, "run-unit-tests", map[string]any{
+			"object_type": "table", // run-unit-tests explicitly excludes table/ddls/srvd/srvb, unlike activate-object
+			"object_name": "ZFOO",
+		})
+		if !res.IsError {
+			t.Error("expected IsError=true for an unsupported object type")
+		}
+	})
+
+	t.Run("backend failure", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, false, nil, "object not found"))
+		out, res := callTool[RunUnitTestsOutput](t, session, "run-unit-tests", map[string]any{
+			"object_type": "class",
+			"object_name": "ZCL_MISSING",
+		})
+		if res.IsError {
+			t.Fatalf("backend failure is reported via AllPassed=false in output, not a protocol error: %+v", res)
+		}
+		if out.AllPassed {
+			t.Error("expected AllPassed=false")
+		}
+		if out.ErrorCode != "SAP_ERROR" {
+			t.Errorf("expected ErrorCode=SAP_ERROR, got %q", out.ErrorCode)
+		}
+	})
+}
+
+func TestSyntaxCheckTool(t *testing.T) {
+	t.Run("no errors", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{"messages": []any{}}, ""))
+		out, res := callTool[SyntaxCheckOutput](t, session, "syntax-check", map[string]any{
+			"object_type": "program",
+			"object_name": "ZFOO",
+			"source_code": "REPORT zfoo.",
+		})
+		if res.IsError {
+			t.Fatalf("unexpected tool error: %+v", res)
+		}
+		if out.HasErrors || out.Count != 0 {
+			t.Errorf("unexpected result: %+v", out)
+		}
+	})
+
+	t.Run("has errors", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
+			"messages": []map[string]any{
+				{"severity": "error", "text": "Field \"X\" is unknown", "line": 4},
+				{"severity": "warning", "text": "Unused variable", "line": 1},
+			},
+		}, ""))
+		out, res := callTool[SyntaxCheckOutput](t, session, "syntax-check", map[string]any{
+			"object_type": "program",
+			"object_name": "ZFOO",
+			"source_code": "REPORT zfoo.\nWRITE x.",
+		})
+		if res.IsError {
+			t.Fatalf("unexpected tool error: %+v", res)
+		}
+		if !out.HasErrors || out.Count != 2 {
+			t.Errorf("unexpected result: %+v", out)
+		}
+		if out.ErrorCode != "SYNTAX_ERROR" {
+			t.Errorf("expected ErrorCode=SYNTAX_ERROR, got %q", out.ErrorCode)
+		}
+		if len(out.Errors) != 1 || !strings.Contains(out.Errors[0], "Field") {
+			t.Errorf("expected only the error-severity message in Errors (warnings excluded), got %+v", out.Errors)
+		}
+	})
+
+	t.Run("backend failure is a protocol error", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, false, nil, "object does not exist"))
+		_, res := callTool[SyntaxCheckOutput](t, session, "syntax-check", map[string]any{
+			"object_type": "program",
+			"object_name": "ZMISSING",
+			"source_code": "REPORT zfoo.",
+		})
+		if !res.IsError {
+			t.Error("expected IsError=true when the backend call itself fails")
+		}
+	})
+}
+
+func TestFormatCodeTool(t *testing.T) {
+	session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
+		"source": "REPORT zfoo.\n\nWRITE 'hello'.",
+	}, ""))
+	out, res := callTool[FormatCodeOutput](t, session, "format-code", map[string]any{
+		"source_code": "report zfoo.\nwrite 'hello'.",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %+v", res)
+	}
+	if out.FormattedCode != "REPORT zfoo.\n\nWRITE 'hello'." {
+		t.Errorf("unexpected formatted code: %q", out.FormattedCode)
+	}
+}
+
+func TestTransportInfoTool(t *testing.T) {
+	session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
+		"object":  "ZFOO",
+		"package": "ZPKG",
+		"transports": []map[string]any{
+			{"number": "Q4HK900123", "description": "Test transport", "owner": "DEVELOPER", "status": "D"},
+		},
+	}, ""))
+
+	out, res := callTool[TransportInfoOutput](t, session, "transport-info", map[string]any{
+		"object_type": "program",
+		"object_name": "ZFOO",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %+v", res)
+	}
+	if out.Count != 1 || !strings.Contains(out.Transports, "Q4HK900123") {
+		t.Errorf("unexpected result: %+v", out)
+	}
+}
+
+func TestTransportInfoTool_NoTransports(t *testing.T) {
+	session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
+		"object":     "ZFOO",
+		"package":    "ZPKG",
+		"transports": []map[string]any{},
+	}, ""))
+
+	out, res := callTool[TransportInfoOutput](t, session, "transport-info", map[string]any{
+		"object_type": "program",
+		"object_name": "ZFOO",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %+v", res)
+	}
+	if out.Count != 0 || !strings.Contains(out.Transports, "No transports found") {
+		t.Errorf("unexpected result: %+v", out)
+	}
+}
+
+func TestCreateTransportTool(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
+			"transport_number": "Q4HK900126",
+			"description":      "My change",
+			"package":          "ZPKG",
+		}, ""))
+
+		out, res := callTool[CreateTransportOutput](t, session, "create-transport", map[string]any{
+			"object_type": "program",
+			"object_name": "ZFOO",
+			"description": "My change",
+		})
+		if res.IsError {
+			t.Fatalf("unexpected tool error: %+v", res)
+		}
+		if !out.Success || out.TransportNumber != "Q4HK900126" {
+			t.Errorf("unexpected result: %+v", out)
+		}
+	})
+
+	t.Run("backend failure reported via Success=false, not a protocol error", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, false, nil, "no authorization to create transports"))
+		out, res := callTool[CreateTransportOutput](t, session, "create-transport", map[string]any{
+			"object_type": "program",
+			"object_name": "ZFOO",
+			"description": "My change",
+		})
+		if res.IsError {
+			t.Fatalf("unexpected protocol-level error: %+v", res)
+		}
+		if out.Success {
+			t.Error("expected Success=false")
 		}
 	})
 }
