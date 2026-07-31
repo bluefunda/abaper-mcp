@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 
 // newTestMCPSession stands up abaper-mcp's real tool registrations
 // (registerTools) behind an in-memory MCP transport, with the Handlers'
-// APIClient pointed at an httptest.Server that mocks the abaper-ts REST
+// APIClient pointed at an httptest.Server that mocks the abaper REST
 // envelope. This exercises the full stack a real MCP client (Claude
 // Desktop, Claude Code, or abaper's own embedded agent) would use: JSON-RPC
 // -> schema validation -> handler -> APIClient -> HTTP -> mocked backend,
@@ -48,7 +48,7 @@ func newTestMCPSession(t *testing.T, backend http.HandlerFunc) *mcp.ClientSessio
 	ts := httptest.NewServer(backend)
 	t.Cleanup(ts.Close)
 
-	config := &Config{AbaperTSURL: ts.URL}
+	config := &Config{BackendURL: ts.URL}
 	handlers := NewHandlers(config)
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "abaper-mcp-test", Version: "test"}, nil)
@@ -283,7 +283,7 @@ func TestCreateObjectTool(t *testing.T) {
 	// routes to update+activate instead of failing with "already exists".
 	t.Run("updates and activates when the object already exists", func(t *testing.T) {
 		// UpdateObject (apiclient.go) posts to the same /api/v1/objects/create
-		// path as CreateObject — abaper-ts distinguishes create vs. save by
+		// path as CreateObject — abaper distinguishes create vs. save by
 		// whether the body has a "description" field, the same convention
 		// found in abaper's own rest/server this session. So the correct way
 		// to confirm "update, not create, was used" is to check the body

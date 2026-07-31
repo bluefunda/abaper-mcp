@@ -5,7 +5,7 @@ services:
       - "8015:8015"
     environment:
       ABAPER_MODE: sse
-      ABAPER_TS_URL: http://abaper-ts:8080
+      ABAPER_BACKEND_URL: http://abaper:8080
       LOG_LEVEL: info
       LOG_FORMAT: json
     restart: unless-stopped

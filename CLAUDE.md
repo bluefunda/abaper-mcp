@@ -2,7 +2,7 @@
 
 ## What is this?
 
-Go MCP (Model Context Protocol) server for SAP ABAP operations. Delegates all SAP/ADT calls to `abaper-ts` REST backend via `APIClient`.
+Go MCP (Model Context Protocol) server for SAP ABAP operations. Delegates all SAP/ADT calls to `abaper` REST backend via `APIClient`.
 
 Module: `github.com/bluefunda/abaper-mcp` | Go 1.26
 
@@ -24,7 +24,7 @@ Set via `ABAPER_MODE`: `stdio` (default, Claude Desktop / Claude Code), `sse` (H
 Everything is `package main` except `internal/logger`. Do not introduce new packages.
 
 - `tools.go` — all MCP tool definitions and handlers (primary extension point)
-- `apiclient.go` — HTTP client for abaper-ts REST API
+- `apiclient.go` — HTTP client for abaper REST API
 - `resources.go` — MCP resource templates
 - `prompts.go` — MCP prompt definitions
 - `config.go` — config struct, validation
@@ -33,7 +33,7 @@ Everything is `package main` except `internal/logger`. Do not introduce new pack
 
 ## Key Rules
 
-- Does NOT connect to SAP directly — always through abaper-ts via `APIClient`
+- Does NOT connect to SAP directly — always through abaper via `APIClient`
 - Every handler gets `requestID` via `uuid.New().String()[:8]` and scoped logger
 - Use `logger.L` (zap) for logging — never `fmt.Println`
 - Normalize object types with `normalizeObjectType()` before API calls

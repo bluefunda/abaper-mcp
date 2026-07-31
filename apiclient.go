@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-// APIClient wraps HTTP calls to the abaper-ts REST backend.
+// APIClient wraps HTTP calls to the abaper REST backend.
 type APIClient struct {
 	baseURL    string
 	httpClient *http.Client
@@ -42,14 +42,14 @@ func NewAPIClient(baseURL string) *APIClient {
 	}
 }
 
-// apiResponse is the standard response envelope from abaper-ts.
+// apiResponse is the standard response envelope from abaper.
 type apiResponse struct {
 	Success bool            `json:"success"`
 	Data    json.RawMessage `json:"data"`
 	Error   string          `json:"error,omitempty"`
 }
 
-// APIError represents a structured error returned by the abaper-ts backend
+// APIError represents a structured error returned by the abaper backend
 // (an HTTP response that parsed cleanly but reported success=false, or a
 // non-2xx status). Transport and decode failures are NOT APIErrors, so callers
 // can distinguish a backend "object not found" from an unreachable backend.
@@ -434,7 +434,7 @@ func (c *APIClient) RunUnitTests(ctx context.Context, objectType, objectName str
 	return &result, nil
 }
 
-// TestConnection tests connectivity to the SAP system via abaper-ts.
+// TestConnection tests connectivity to the SAP system via abaper.
 func (c *APIClient) TestConnection(ctx context.Context) (*ConnectData, error) {
 	data, err := c.post(ctx, "/api/v1/system/connect", map[string]string{})
 	if err != nil {

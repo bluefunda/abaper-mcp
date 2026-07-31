@@ -12,11 +12,11 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for SAP
 AI assistant (Claude Desktop / Cursor / Windsurf)
   → MCP protocol (stdio or HTTP/SSE)
     → abaper-mcp  ← this repo
-      → abaper-ts REST API
+      → abaper REST API
         → SAP system (ADT)
 ```
 
-`abaper-mcp` does not connect to SAP directly. All ADT calls are delegated to an `abaper-ts` backend instance; configure its URL via `ABAPER_TS_URL`.
+`abaper-mcp` does not connect to SAP directly. All ADT calls are delegated to an `abaper` backend instance; configure its URL via `ABAPER_BACKEND_URL`.
 
 ## Installation
 
@@ -45,7 +45,7 @@ Add to your Claude Desktop config:
     "abaper": {
       "command": "/usr/local/bin/abaper-mcp",
       "env": {
-        "ABAPER_TS_URL": "https://your-abaper-ts-host"
+        "ABAPER_BACKEND_URL": "https://your-abaper-host"
       }
     }
   }
@@ -69,8 +69,12 @@ Set via `ABAPER_MODE` env var:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ABAPER_TS_URL` | Yes | `http://localhost:8080` | abaper-ts REST API base URL |
+| `ABAPER_BACKEND_URL` | Yes | `http://localhost:8080` | abaper REST API base URL (reachable directly or via the abaper-bff gateway) |
+| `ABAPER_TS_URL` | No | — | Deprecated alias for `ABAPER_BACKEND_URL` (still honored if `ABAPER_BACKEND_URL` is unset) |
 | `ABAPER_MODE` | No | `stdio` | `stdio` or `sse` |
+| `ABAPER_AUTH_TOKEN` | No | — | If set, SSE requests require `Authorization: Bearer <token>` (`/health` stays public) |
+| `S4_TEMPORAL_URL` | No | — | s4-temporal API URL; enables the `s4-*` batch tools when set |
+| `S4_ALLOWED_SCRIPTS` | No | `minio-batch-all.sh,minio-batch-folder.sh,minio-batch-xml.sh` | Comma-separated allowlist of batch scripts `s4-batch-analyze` may run |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
 | `LOG_FORMAT` | No | `json` | `json` or `console` |
 
@@ -83,7 +87,7 @@ Set via `ABAPER_MODE` env var:
 | `get-object` | Retrieve source code for any ABAP object |
 | `search-objects` | Search objects by pattern with wildcard support |
 | `list-packages` | List all ABAP packages |
-| `test-connection` | Verify connectivity to abaper-ts |
+| `test-connection` | Verify connectivity to abaper |
 | `create-object` | Create a new ABAP object with source |
 | `update-object` | Update source code of an existing object |
 | `activate-object` | Activate an ABAP object |
@@ -140,7 +144,7 @@ handlers.go                # Handlers struct (Config + APIClient)
 tools.go                   # All MCP tool definitions and handlers
 resources.go               # MCP resource templates
 prompts.go                 # MCP prompt definitions
-apiclient.go               # HTTP client for abaper-ts REST API
+apiclient.go               # HTTP client for abaper REST API
 s4_remediation.go          # S/4HANA compatibility analysis
 internal/logger/           # Structured logging (zap)
 examples/                  # Claude Desktop, Cursor, Docker configs

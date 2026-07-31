@@ -455,7 +455,7 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
 		}
 
-		// Fetch source code from SAP via abaper-ts
+		// Fetch source code from SAP via abaper
 		adtType := normalizeObjectType(input.ObjectType)
 		objResult, err := h.apiClient.GetObject(ctx, adtType, input.ObjectName, input.FunctionGroup)
 		if err != nil {
@@ -499,7 +499,7 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 		RunMetadata: RunMetadata{
 			RunID:         uuid.New().String(),
 			TimestampUTC:  time.Now().UTC().Format(time.RFC3339),
-			SystemID:      h.config.AbaperTSURL,
+			SystemID:      h.config.BackendURL,
 			SystemRelease: "",
 			Client:        "",
 			Analyst:       "Claude",
