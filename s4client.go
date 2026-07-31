@@ -16,6 +16,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -71,13 +72,19 @@ type S4ResultResponse struct {
 // --- Client methods ---
 
 // RunScript triggers a script execution via Temporal workflow.
-func (c *S4Client) RunScript(req S4RunRequest) (*S4RunResponse, error) {
+func (c *S4Client) RunScript(ctx context.Context, req S4RunRequest) (*S4RunResponse, error) {
 	jsonBody, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := c.httpClient.Post(c.baseURL+"/scripts/run", "application/json", bytes.NewReader(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/scripts/run", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request to /scripts/run: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("request to /scripts/run failed: %w", err)
 	}
@@ -97,8 +104,13 @@ func (c *S4Client) RunScript(req S4RunRequest) (*S4RunResponse, error) {
 }
 
 // GetStatus checks the status of a Temporal workflow.
-func (c *S4Client) GetStatus(workflowID string) (*S4StatusResponse, error) {
-	resp, err := c.httpClient.Get(c.baseURL + "/scripts/status/" + workflowID)
+func (c *S4Client) GetStatus(ctx context.Context, workflowID string) (*S4StatusResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/scripts/status/"+workflowID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request to /scripts/status: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request to /scripts/status failed: %w", err)
 	}
@@ -118,8 +130,13 @@ func (c *S4Client) GetStatus(workflowID string) (*S4StatusResponse, error) {
 }
 
 // GetResult retrieves the result of a completed Temporal workflow.
-func (c *S4Client) GetResult(workflowID string) (*S4ResultResponse, error) {
-	resp, err := c.httpClient.Get(c.baseURL + "/scripts/result/" + workflowID)
+func (c *S4Client) GetResult(ctx context.Context, workflowID string) (*S4ResultResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/scripts/result/"+workflowID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request to /scripts/result: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request to /scripts/result failed: %w", err)
 	}

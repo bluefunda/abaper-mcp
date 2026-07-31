@@ -177,7 +177,7 @@ func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest
 	}
 
 	adtType := normalizeObjectType(input.ObjectType)
-	result, err := h.apiClient.GetObject(adtType, input.ObjectName, input.FunctionGroup)
+	result, err := h.apiClient.GetObject(ctx, adtType, input.ObjectName, input.FunctionGroup)
 	if err != nil {
 		log.Error("Failed to get object", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("failed to get object: %w", err)
@@ -228,7 +228,7 @@ func (h *Handlers) HandleSearchObjects(ctx context.Context, req *mcp.CallToolReq
 		zap.Strings("object_types", input.ObjectTypes),
 	)
 
-	results, err := h.apiClient.SearchObjects(input.Pattern, input.ObjectTypes)
+	results, err := h.apiClient.SearchObjects(ctx, input.Pattern, input.ObjectTypes)
 	if err != nil {
 		log.Error("Search failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, SearchObjectsOutput{}, fmt.Errorf("search failed: %w", err)
@@ -280,7 +280,7 @@ func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequ
 
 	log.Info("Tool execution started")
 
-	packages, err := h.apiClient.ListPackages()
+	packages, err := h.apiClient.ListPackages(ctx)
 	if err != nil {
 		log.Error("Failed to list packages", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, ListPackagesOutput{}, fmt.Errorf("failed to list packages: %w", err)
@@ -321,7 +321,7 @@ func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRe
 
 	log.Info("Tool execution started")
 
-	result, err := h.apiClient.TestConnection()
+	result, err := h.apiClient.TestConnection(ctx)
 	if err != nil {
 		log.Warn("Connection test failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, TestConnectionOutput{
@@ -405,10 +405,24 @@ func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequ
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
-	// Idempotency guard: check if object already exists
-	existing, _ := h.apiClient.GetObject(adtType, input.Name, "")
+	// Idempotency guard: check if object already exists. Only a genuine
+	// "not found" is safe to ignore; any other error (network, auth, backend
+	// failure) must abort so we never create based on a transient failure.
+	existing, err := h.apiClient.GetObject(ctx, adtType, input.Name, "")
+	if err != nil && !IsNotFound(err) {
+		log.Error("Existence check failed", zap.Error(err))
+		return nil, CreateObjectOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Could not determine whether %s %s exists: %v", adtType, input.Name, err),
+			Name:        input.Name,
+			ObjectType:  adtType,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("Existence check failed: %v", err),
+			Errors:      []string{fmt.Sprintf("Existence check failed: %v", err)},
+		}, nil
+	}
 	if existing != nil && existing.Source != "" {
-		err := h.apiClient.UpdateObject(adtType, input.Name, input.SourceCode)
+		err := h.apiClient.UpdateObject(ctx, adtType, input.Name, input.SourceCode)
 		if err != nil {
 			log.Error("Failed to update existing object", zap.Error(err))
 			return nil, CreateObjectOutput{
@@ -422,7 +436,7 @@ func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequ
 			}, nil
 		}
 
-		activateResult, activateErr := h.apiClient.Activate(adtType, input.Name)
+		activateResult, activateErr := h.apiClient.Activate(ctx, adtType, input.Name)
 		activated := activateErr == nil && activateResult != nil && activateResult.Success
 
 		log.Info("Idempotency guard: object already existed, updated",
@@ -448,7 +462,7 @@ func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequ
 		pkg = "$TMP"
 	}
 
-	err := h.apiClient.CreateObject(adtType, input.Name, desc, input.SourceCode, pkg)
+	err = h.apiClient.CreateObject(ctx, adtType, input.Name, desc, input.SourceCode, pkg)
 	if err != nil {
 		log.Error("Failed to create object", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateObjectOutput{
@@ -521,7 +535,7 @@ func (h *Handlers) HandleUpdateObject(ctx context.Context, req *mcp.CallToolRequ
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
-	err := h.apiClient.UpdateObject(adtType, input.Name, input.SourceCode)
+	err := h.apiClient.UpdateObject(ctx, adtType, input.Name, input.SourceCode)
 	if err != nil {
 		log.Error("Failed to update object", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, UpdateObjectOutput{
@@ -596,7 +610,7 @@ func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRe
 	}
 
 	adtType := normalizeObjectType(input.ObjectType)
-	result, err := h.apiClient.Activate(adtType, input.ObjectName)
+	result, err := h.apiClient.Activate(ctx, adtType, input.ObjectName)
 	if err != nil {
 		log.Error("Activation failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, ActivateObjectOutput{
@@ -697,7 +711,7 @@ func (h *Handlers) HandleRunUnitTests(ctx context.Context, req *mcp.CallToolRequ
 	}
 
 	adtType := normalizeObjectType(input.ObjectType)
-	result, err := h.apiClient.RunUnitTests(adtType, input.ObjectName)
+	result, err := h.apiClient.RunUnitTests(ctx, adtType, input.ObjectName)
 	if err != nil {
 		log.Error("Unit test execution failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, RunUnitTestsOutput{
@@ -780,7 +794,7 @@ func (h *Handlers) HandleSyntaxCheck(ctx context.Context, req *mcp.CallToolReque
 	)
 
 	adtType := normalizeObjectType(input.ObjectType)
-	result, err := h.apiClient.SyntaxCheck(adtType, input.ObjectName, input.SourceCode)
+	result, err := h.apiClient.SyntaxCheck(ctx, adtType, input.ObjectName, input.SourceCode)
 	if err != nil {
 		log.Error("Syntax check failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, SyntaxCheckOutput{}, fmt.Errorf("syntax check failed: %w", err)
@@ -846,7 +860,7 @@ func (h *Handlers) HandleFormatCode(ctx context.Context, req *mcp.CallToolReques
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
-	formatted, err := h.apiClient.FormatSource(input.SourceCode)
+	formatted, err := h.apiClient.FormatSource(ctx, input.SourceCode)
 	if err != nil {
 		log.Error("Format failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, FormatCodeOutput{}, fmt.Errorf("format failed: %w", err)
@@ -889,7 +903,7 @@ func (h *Handlers) HandleTransportInfo(ctx context.Context, req *mcp.CallToolReq
 	)
 
 	adtType := normalizeObjectType(input.ObjectType)
-	result, err := h.apiClient.TransportInfo(adtType, input.ObjectName, input.Package)
+	result, err := h.apiClient.TransportInfo(ctx, adtType, input.ObjectName, input.Package)
 	if err != nil {
 		log.Error("Transport info failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, TransportInfoOutput{}, fmt.Errorf("transport info failed: %w", err)
@@ -950,7 +964,7 @@ func (h *Handlers) HandleCreateTransport(ctx context.Context, req *mcp.CallToolR
 		pkg = "$TMP"
 	}
 
-	result, err := h.apiClient.CreateTransport(adtType, input.ObjectName, input.Description, pkg)
+	result, err := h.apiClient.CreateTransport(ctx, adtType, input.ObjectName, input.Description, pkg)
 	if err != nil {
 		log.Error("Create transport failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateTransportOutput{
@@ -1055,19 +1069,32 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 	var steps []StepResult
 	existed := false
 
-	// Step 1: Check existence
-	_, err := h.apiClient.GetObject(adtType, input.ObjectName, "")
-	if err != nil {
-		// Object does not exist — will create
-		steps = append(steps, StepResult{Step: "check_existence", Success: true, Message: "Object does not exist, will create"})
-	} else {
+	// Step 1: Check existence. Only a genuine "not found" means we should
+	// create; any other error (network, auth, backend failure) must abort so
+	// we never recreate/overwrite based on a transient failure.
+	_, err := h.apiClient.GetObject(ctx, adtType, input.ObjectName, "")
+	switch {
+	case err == nil:
 		existed = true
 		steps = append(steps, StepResult{Step: "check_existence", Success: true, Message: "Object exists, will update"})
+	case IsNotFound(err):
+		steps = append(steps, StepResult{Step: "check_existence", Success: true, Message: "Object does not exist, will create"})
+	default:
+		log.Error("Existence check failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		steps = append(steps, StepResult{Step: "check_existence", Success: false, Message: fmt.Sprintf("Existence check failed: %v", err)})
+		return nil, CreateAndActivateOutput{
+			Success:    false,
+			ObjectName: input.ObjectName,
+			ObjectType: input.ObjectType,
+			Action:     "existence_check_failed",
+			Steps:      steps,
+			Message:    fmt.Sprintf("Could not determine whether %s exists: %v", input.ObjectName, err),
+		}, nil
 	}
 
 	// Step 2: Create or update
 	if existed {
-		err = h.apiClient.UpdateObject(adtType, input.ObjectName, input.SourceCode)
+		err = h.apiClient.UpdateObject(ctx, adtType, input.ObjectName, input.SourceCode)
 		if err != nil {
 			steps = append(steps, StepResult{Step: "update", Success: false, Message: fmt.Sprintf("Update failed: %v", err)})
 			log.Error("Update failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
@@ -1086,7 +1113,7 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 		if desc == "" {
 			desc = input.ObjectName
 		}
-		err = h.apiClient.CreateObject(adtType, input.ObjectName, desc, input.SourceCode, pkg)
+		err = h.apiClient.CreateObject(ctx, adtType, input.ObjectName, desc, input.SourceCode, pkg)
 		if err != nil {
 			steps = append(steps, StepResult{Step: "create", Success: false, Message: fmt.Sprintf("Create failed: %v", err)})
 			log.Error("Create failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
@@ -1103,7 +1130,7 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 	}
 
 	// Step 3: Activate
-	activateResult, err := h.apiClient.Activate(adtType, input.ObjectName)
+	activateResult, err := h.apiClient.Activate(ctx, adtType, input.ObjectName)
 	if err != nil {
 		steps = append(steps, StepResult{Step: "activate", Success: false, Message: fmt.Sprintf("Activation call failed: %v", err)})
 		log.Error("Activation failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
@@ -1212,7 +1239,7 @@ func (h *Handlers) HandleS4BatchAnalyze(ctx context.Context, req *mcp.CallToolRe
 		return &mcp.CallToolResult{IsError: true}, S4BatchAnalyzeOutput{}, fmt.Errorf("script is required")
 	}
 
-	result, err := h.s4Client.RunScript(S4RunRequest{
+	result, err := h.s4Client.RunScript(ctx, S4RunRequest{
 		Script: input.Script,
 		Bucket: input.Bucket,
 		Prefix: input.Prefix,
@@ -1263,7 +1290,7 @@ func (h *Handlers) HandleS4WorkflowStatus(ctx context.Context, req *mcp.CallTool
 		return &mcp.CallToolResult{IsError: true}, S4WorkflowStatusOutput{}, fmt.Errorf("workflow_id is required")
 	}
 
-	result, err := h.s4Client.GetStatus(input.WorkflowID)
+	result, err := h.s4Client.GetStatus(ctx, input.WorkflowID)
 	if err != nil {
 		log.Error("Failed to get workflow status", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, S4WorkflowStatusOutput{}, fmt.Errorf("failed to get workflow status: %w", err)
@@ -1308,7 +1335,7 @@ func (h *Handlers) HandleS4WorkflowResult(ctx context.Context, req *mcp.CallTool
 		return &mcp.CallToolResult{IsError: true}, S4WorkflowResultOutput{}, fmt.Errorf("workflow_id is required")
 	}
 
-	result, err := h.s4Client.GetResult(input.WorkflowID)
+	result, err := h.s4Client.GetResult(ctx, input.WorkflowID)
 	if err != nil {
 		log.Error("Failed to get workflow result", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return &mcp.CallToolResult{IsError: true}, S4WorkflowResultOutput{}, fmt.Errorf("failed to get workflow result: %w", err)

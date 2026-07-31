@@ -16,7 +16,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,14 +49,50 @@ type apiResponse struct {
 	Error   string          `json:"error,omitempty"`
 }
 
+// APIError represents a structured error returned by the abaper-ts backend
+// (an HTTP response that parsed cleanly but reported success=false, or a
+// non-2xx status). Transport and decode failures are NOT APIErrors, so callers
+// can distinguish a backend "object not found" from an unreachable backend.
+type APIError struct {
+	Path       string
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API error from %s (status %d): %s", e.Path, e.StatusCode, e.Message)
+}
+
+// IsNotFound reports whether err is a backend APIError indicating the requested
+// object does not exist (HTTP 404, or an error message the backend uses for a
+// missing object). It returns false for transport/auth/parse errors, so callers
+// must not treat those as "not found".
+func IsNotFound(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.StatusCode == http.StatusNotFound {
+		return true
+	}
+	msg := strings.ToLower(apiErr.Message)
+	return strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist")
+}
+
 // post sends a JSON POST request and returns the data field from the response envelope.
-func (c *APIClient) post(path string, body interface{}) (json.RawMessage, error) {
+func (c *APIClient) post(ctx context.Context, path string, body any) (json.RawMessage, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := c.httpClient.Post(c.baseURL+path, "application/json", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request to %s: %w", path, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request to %s failed: %w", path, err)
 	}
@@ -71,7 +109,7 @@ func (c *APIClient) post(path string, body interface{}) (json.RawMessage, error)
 	}
 
 	if !apiResp.Success {
-		return nil, fmt.Errorf("API error from %s: %s", path, apiResp.Error)
+		return nil, &APIError{Path: path, StatusCode: resp.StatusCode, Message: apiResp.Error}
 	}
 
 	return apiResp.Data, nil
@@ -231,7 +269,7 @@ type ConnectData struct {
 // --- API methods ---
 
 // GetObject retrieves an ABAP object's source code.
-func (c *APIClient) GetObject(objectType, objectName, functionGroup string) (*ObjectData, error) {
+func (c *APIClient) GetObject(ctx context.Context, objectType, objectName, functionGroup string) (*ObjectData, error) {
 	body := map[string]string{
 		"object_type": objectType,
 		"object_name": objectName,
@@ -240,7 +278,7 @@ func (c *APIClient) GetObject(objectType, objectName, functionGroup string) (*Ob
 		body["function_group"] = functionGroup
 	}
 
-	data, err := c.post("/api/v1/objects/get", body)
+	data, err := c.post(ctx, "/api/v1/objects/get", body)
 	if err != nil {
 		return nil, err
 	}
@@ -253,15 +291,15 @@ func (c *APIClient) GetObject(objectType, objectName, functionGroup string) (*Ob
 }
 
 // SearchObjects searches for ABAP objects by pattern.
-func (c *APIClient) SearchObjects(pattern string, objectTypes []string) (*SearchResult, error) {
-	body := map[string]interface{}{
+func (c *APIClient) SearchObjects(ctx context.Context, pattern string, objectTypes []string) (*SearchResult, error) {
+	body := map[string]any{
 		"object_name": pattern,
 	}
 	if len(objectTypes) > 0 {
 		body["object_type"] = objectTypes[0]
 	}
 
-	data, err := c.post("/api/v1/objects/search", body)
+	data, err := c.post(ctx, "/api/v1/objects/search", body)
 	if err != nil {
 		return nil, err
 	}
@@ -274,12 +312,12 @@ func (c *APIClient) SearchObjects(pattern string, objectTypes []string) (*Search
 }
 
 // ListPackages lists ABAP packages.
-func (c *APIClient) ListPackages() ([]PackageData, error) {
+func (c *APIClient) ListPackages(ctx context.Context) ([]PackageData, error) {
 	body := map[string]string{
 		"object_type": "packages",
 	}
 
-	data, err := c.post("/api/v1/objects/list", body)
+	data, err := c.post(ctx, "/api/v1/objects/list", body)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +330,7 @@ func (c *APIClient) ListPackages() ([]PackageData, error) {
 }
 
 // CreateObject creates a new ABAP object with source code.
-func (c *APIClient) CreateObject(objectType, objectName, description, source, pkg string) error {
+func (c *APIClient) CreateObject(ctx context.Context, objectType, objectName, description, source, pkg string) error {
 	body := map[string]string{
 		"object_type": objectType,
 		"object_name": objectName,
@@ -301,26 +339,26 @@ func (c *APIClient) CreateObject(objectType, objectName, description, source, pk
 		"package":     pkg,
 	}
 
-	_, err := c.post("/api/v1/objects/create", body)
+	_, err := c.post(ctx, "/api/v1/objects/create", body)
 	return err
 }
 
 // UpdateObject updates source code of an existing ABAP object (save mode).
-func (c *APIClient) UpdateObject(objectType, objectName, source string) error {
+func (c *APIClient) UpdateObject(ctx context.Context, objectType, objectName, source string) error {
 	body := map[string]string{
 		"object_type": objectType,
 		"object_name": objectName,
 		"source":      source,
 	}
 
-	_, err := c.post("/api/v1/objects/create", body)
+	_, err := c.post(ctx, "/api/v1/objects/create", body)
 	return err
 }
 
 // Activate activates an ABAP object.
 // Unlike other API calls, activation may return success=false with structured
 // error data (line-number messages). We need to parse the data field even on failure.
-func (c *APIClient) Activate(objectType, objectName string) (*ActivateData, error) {
+func (c *APIClient) Activate(ctx context.Context, objectType, objectName string) (*ActivateData, error) {
 	body := map[string]string{
 		"object_type": objectType,
 		"object_name": objectName,
@@ -331,7 +369,13 @@ func (c *APIClient) Activate(objectType, objectName string) (*ActivateData, erro
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := c.httpClient.Post(c.baseURL+"/api/v1/activate", "application/json", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/activate", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request to /api/v1/activate: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request to /api/v1/activate failed: %w", err)
 	}
@@ -372,13 +416,13 @@ func (c *APIClient) Activate(objectType, objectName string) (*ActivateData, erro
 }
 
 // RunUnitTests runs ABAP unit tests on an object.
-func (c *APIClient) RunUnitTests(objectType, objectName string) (*UnitTestData, error) {
+func (c *APIClient) RunUnitTests(ctx context.Context, objectType, objectName string) (*UnitTestData, error) {
 	body := map[string]string{
 		"object_type": objectType,
 		"object_name": objectName,
 	}
 
-	data, err := c.post("/api/v1/unit-tests", body)
+	data, err := c.post(ctx, "/api/v1/unit-tests", body)
 	if err != nil {
 		return nil, err
 	}
@@ -391,8 +435,8 @@ func (c *APIClient) RunUnitTests(objectType, objectName string) (*UnitTestData, 
 }
 
 // TestConnection tests connectivity to the SAP system via abaper-ts.
-func (c *APIClient) TestConnection() (*ConnectData, error) {
-	data, err := c.post("/api/v1/system/connect", map[string]string{})
+func (c *APIClient) TestConnection(ctx context.Context) (*ConnectData, error) {
+	data, err := c.post(ctx, "/api/v1/system/connect", map[string]string{})
 	if err != nil {
 		return nil, err
 	}
@@ -405,14 +449,14 @@ func (c *APIClient) TestConnection() (*ConnectData, error) {
 }
 
 // SyntaxCheck performs a syntax check on ABAP source code.
-func (c *APIClient) SyntaxCheck(objectType, objectName, source string) (*SyntaxCheckData, error) {
+func (c *APIClient) SyntaxCheck(ctx context.Context, objectType, objectName, source string) (*SyntaxCheckData, error) {
 	body := map[string]string{
 		"object_type": objectType,
 		"object_name": objectName,
 		"source":      source,
 	}
 
-	data, err := c.post("/api/v1/syntax-check", body)
+	data, err := c.post(ctx, "/api/v1/syntax-check", body)
 	if err != nil {
 		return nil, err
 	}
@@ -425,12 +469,12 @@ func (c *APIClient) SyntaxCheck(objectType, objectName, source string) (*SyntaxC
 }
 
 // FormatSource formats ABAP source code via the pretty printer.
-func (c *APIClient) FormatSource(source string) (string, error) {
+func (c *APIClient) FormatSource(ctx context.Context, source string) (string, error) {
 	body := map[string]string{
 		"source": source,
 	}
 
-	data, err := c.post("/api/v1/format", body)
+	data, err := c.post(ctx, "/api/v1/format", body)
 	if err != nil {
 		return "", err
 	}
@@ -443,8 +487,8 @@ func (c *APIClient) FormatSource(source string) (string, error) {
 }
 
 // TransportInfo retrieves transport info for an ABAP object.
-func (c *APIClient) TransportInfo(objectType, objectName, pkg string) (*TransportInfoData, error) {
-	body := map[string]interface{}{
+func (c *APIClient) TransportInfo(ctx context.Context, objectType, objectName, pkg string) (*TransportInfoData, error) {
+	body := map[string]any{
 		"object_type": objectType,
 		"object_name": objectName,
 	}
@@ -452,7 +496,7 @@ func (c *APIClient) TransportInfo(objectType, objectName, pkg string) (*Transpor
 		body["package"] = pkg
 	}
 
-	data, err := c.post("/api/v1/transports/info", body)
+	data, err := c.post(ctx, "/api/v1/transports/info", body)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +509,7 @@ func (c *APIClient) TransportInfo(objectType, objectName, pkg string) (*Transpor
 }
 
 // CreateTransport creates a new transport request.
-func (c *APIClient) CreateTransport(objectType, objectName, description, pkg string) (*CreateTransportData, error) {
+func (c *APIClient) CreateTransport(ctx context.Context, objectType, objectName, description, pkg string) (*CreateTransportData, error) {
 	body := map[string]string{
 		"object_type": objectType,
 		"object_name": objectName,
@@ -473,7 +517,7 @@ func (c *APIClient) CreateTransport(objectType, objectName, description, pkg str
 		"package":     pkg,
 	}
 
-	data, err := c.post("/api/v1/transports/create", body)
+	data, err := c.post(ctx, "/api/v1/transports/create", body)
 	if err != nil {
 		return nil, err
 	}

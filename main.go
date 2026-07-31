@@ -151,7 +151,18 @@ func runSSEMode(ctx context.Context, server *mcp.Server) {
 		zap.String("health_check", "http://"+addr+"/health"),
 	)
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	// Explicit timeouts guard against slow-client (Slowloris) resource
+	// exhaustion (gosec G114). WriteTimeout is left at 0 because SSE responses
+	// are long-lived streams; a non-zero value would cut active streams.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	if err := srv.ListenAndServe(); err != nil {
 		logger.L.Fatal("HTTP server error", zap.Error(err))
 	}
 }
