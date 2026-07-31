@@ -431,7 +431,7 @@ func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.Call
 
 		// Fetch source code from SAP via abaper-ts
 		adtType := normalizeObjectType(input.ObjectType)
-		objResult, err := h.apiClient.GetObject(adtType, input.ObjectName, input.FunctionGroup)
+		objResult, err := h.apiClient.GetObject(ctx, adtType, input.ObjectName, input.FunctionGroup)
 		if err != nil {
 			log.Error("Failed to get object", zap.Error(err))
 			return &mcp.CallToolResult{IsError: true}, S4RemediationOutput{}, fmt.Errorf("failed to get object: %w", err)

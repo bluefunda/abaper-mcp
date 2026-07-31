@@ -15,10 +15,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestIsNotFound(t *testing.T) {
@@ -70,6 +73,50 @@ func TestIsNotFound(t *testing.T) {
 				t.Errorf("IsNotFound(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestGetObjectContextCancellation verifies that cancelling the context aborts
+// an in-flight backend request promptly instead of blocking until the 60s
+// client timeout — i.e. the handler ctx is actually wired into the HTTP call.
+func TestGetObjectContextCancellation(t *testing.T) {
+	quit := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Hold the request open until the test finishes so it can only return
+		// via the client cancelling its context.
+		select {
+		case <-r.Context().Done():
+		case <-quit:
+		}
+	}))
+	defer srv.Close()
+	defer close(quit)
+
+	client := NewAPIClient(srv.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		_, err := client.GetObject(ctx, "PROG", "ZFOO", "")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("expected context.Canceled, got %v", err)
+		}
+		if elapsed := time.Since(start); elapsed > 5*time.Second {
+			t.Errorf("request did not abort promptly on cancellation: took %s", elapsed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("GetObject did not return after context cancellation — ctx not wired into the request")
 	}
 }
 

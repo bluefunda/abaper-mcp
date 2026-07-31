@@ -88,7 +88,7 @@ func (h *Handlers) HandleProgramResource(ctx context.Context, req *mcp.ReadResou
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	result, err := h.apiClient.GetObject("PROG", name, "")
+	result, err := h.apiClient.GetObject(ctx, "PROG", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -111,7 +111,7 @@ func (h *Handlers) HandleClassResource(ctx context.Context, req *mcp.ReadResourc
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	result, err := h.apiClient.GetObject("CLAS", name, "")
+	result, err := h.apiClient.GetObject(ctx, "CLAS", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -139,7 +139,7 @@ func (h *Handlers) HandleFunctionResource(ctx context.Context, req *mcp.ReadReso
 	group := parts[0]
 	name := parts[1]
 
-	result, err := h.apiClient.GetObject("FUNC", name, group)
+	result, err := h.apiClient.GetObject(ctx, "FUNC", name, group)
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -162,7 +162,7 @@ func (h *Handlers) HandleInterfaceResource(ctx context.Context, req *mcp.ReadRes
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	result, err := h.apiClient.GetObject("INTF", name, "")
+	result, err := h.apiClient.GetObject(ctx, "INTF", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -185,7 +185,7 @@ func (h *Handlers) HandleTableResource(ctx context.Context, req *mcp.ReadResourc
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	result, err := h.apiClient.GetObject("TABL", name, "")
+	result, err := h.apiClient.GetObject(ctx, "TABL", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -208,7 +208,7 @@ func (h *Handlers) HandleStructureResource(ctx context.Context, req *mcp.ReadRes
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	result, err := h.apiClient.GetObject("STRU", name, "")
+	result, err := h.apiClient.GetObject(ctx, "STRU", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -231,7 +231,7 @@ func (h *Handlers) HandleIncludeResource(ctx context.Context, req *mcp.ReadResou
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
 
-	result, err := h.apiClient.GetObject("INCL", name, "")
+	result, err := h.apiClient.GetObject(ctx, "INCL", name, "")
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}
@@ -249,7 +249,7 @@ func (h *Handlers) HandleIncludeResource(ctx context.Context, req *mcp.ReadResou
 
 // HandlePackagesResource handles packages list resource
 func (h *Handlers) HandlePackagesResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	packages, err := h.apiClient.ListPackages()
+	packages, err := h.apiClient.ListPackages(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list packages: %w", err)
 	}

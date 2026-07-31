@@ -93,7 +93,7 @@ func (h *Handlers) HandleAnalyzePrompt(ctx context.Context, req *mcp.GetPromptRe
 	objectType := req.Params.Arguments["object_type"]
 	objectName := req.Params.Arguments["object_name"]
 
-	sourceCode, err := h.getSourceCode(objectType, objectName)
+	sourceCode, err := h.getSourceCode(ctx, objectType, objectName)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func (h *Handlers) HandleReviewPrompt(ctx context.Context, req *mcp.GetPromptReq
 	objectType := req.Params.Arguments["object_type"]
 	objectName := req.Params.Arguments["object_name"]
 
-	sourceCode, err := h.getSourceCode(objectType, objectName)
+	sourceCode, err := h.getSourceCode(ctx, objectType, objectName)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func (h *Handlers) HandleOptimizePrompt(ctx context.Context, req *mcp.GetPromptR
 	objectType := req.Params.Arguments["object_type"]
 	objectName := req.Params.Arguments["object_name"]
 
-	sourceCode, err := h.getSourceCode(objectType, objectName)
+	sourceCode, err := h.getSourceCode(ctx, objectType, objectName)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +201,7 @@ func (h *Handlers) HandleDocumentPrompt(ctx context.Context, req *mcp.GetPromptR
 	objectType := req.Params.Arguments["object_type"]
 	objectName := req.Params.Arguments["object_name"]
 
-	sourceCode, err := h.getSourceCode(objectType, objectName)
+	sourceCode, err := h.getSourceCode(ctx, objectType, objectName)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +240,7 @@ func (h *Handlers) HandleTestPrompt(ctx context.Context, req *mcp.GetPromptReque
 	objectType := req.Params.Arguments["object_type"]
 	objectName := req.Params.Arguments["object_name"]
 
-	sourceCode, err := h.getSourceCode(objectType, objectName)
+	sourceCode, err := h.getSourceCode(ctx, objectType, objectName)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (h *Handlers) HandleRefactorPrompt(ctx context.Context, req *mcp.GetPromptR
 	objectType := req.Params.Arguments["object_type"]
 	objectName := req.Params.Arguments["object_name"]
 
-	sourceCode, err := h.getSourceCode(objectType, objectName)
+	sourceCode, err := h.getSourceCode(ctx, objectType, objectName)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +316,7 @@ func (h *Handlers) HandleExplainPrompt(ctx context.Context, req *mcp.GetPromptRe
 	objectType := req.Params.Arguments["object_type"]
 	objectName := req.Params.Arguments["object_name"]
 
-	sourceCode, err := h.getSourceCode(objectType, objectName)
+	sourceCode, err := h.getSourceCode(ctx, objectType, objectName)
 	if err != nil {
 		return nil, err
 	}
@@ -349,9 +349,9 @@ Explain the code in a way that both technical and non-technical stakeholders can
 }
 
 // getSourceCode retrieves source code for a given object via abaper-ts
-func (h *Handlers) getSourceCode(objectType, objectName string) (string, error) {
+func (h *Handlers) getSourceCode(ctx context.Context, objectType, objectName string) (string, error) {
 	adtType := normalizeObjectType(objectType)
-	result, err := h.apiClient.GetObject(adtType, objectName, "")
+	result, err := h.apiClient.GetObject(ctx, adtType, objectName, "")
 	if err != nil {
 		return "", fmt.Errorf("failed to get %s %s: %w", objectType, objectName, err)
 	}
