@@ -16,11 +16,13 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -69,8 +71,11 @@ func main() {
 	)
 
 	config := &Config{
-		AbaperTSURL:   getEnv("ABAPER_TS_URL", "http://localhost:8080"),
-		S4TemporalURL: getEnv("S4_TEMPORAL_URL", ""),
+		// ABAPER_BACKEND_URL is the canonical name; ABAPER_TS_URL is kept as a
+		// deprecated alias for the former abaper-ts backend.
+		BackendURL:       getEnv("ABAPER_BACKEND_URL", getEnv("ABAPER_TS_URL", "http://localhost:8080")),
+		S4TemporalURL:    getEnv("S4_TEMPORAL_URL", ""),
+		S4AllowedScripts: splitAndTrim(getEnv("S4_ALLOWED_SCRIPTS", "")),
 	}
 
 	if err := config.Validate(); err != nil {
@@ -78,7 +83,7 @@ func main() {
 	}
 
 	logger.L.Info("Configuration loaded",
-		zap.String("abaper_ts_url", config.AbaperTSURL),
+		zap.String("backend_url", config.BackendURL),
 		zap.String("s4_temporal_url", config.S4TemporalURL),
 	)
 
@@ -147,7 +152,15 @@ func runSSEMode(ctx context.Context, server *mcp.Server) {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", handler)
+	// Optional bearer-token auth for the MCP endpoint. /health is registered
+	// separately below and stays public for liveness probes.
+	if token := getEnv("ABAPER_AUTH_TOKEN", ""); token != "" {
+		logger.L.Info("SSE endpoint authentication enabled (bearer token)")
+		mux.Handle("/", bearerAuth(token, handler))
+	} else {
+		logger.L.Warn("SSE endpoint is UNAUTHENTICATED; front it with an authenticating gateway or set ABAPER_AUTH_TOKEN")
+		mux.Handle("/", handler)
+	}
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -198,4 +211,34 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// bearerAuth wraps next with a constant-time check that the request carries a
+// matching "Authorization: Bearer <token>" header, returning 401 otherwise.
+func bearerAuth(token string, next http.Handler) http.Handler {
+	want := []byte("Bearer " + token)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := []byte(r.Header.Get("Authorization"))
+		if subtle.ConstantTimeCompare(got, want) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// splitAndTrim splits a comma-separated list into trimmed, non-empty entries.
+func splitAndTrim(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
