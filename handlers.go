@@ -14,11 +14,27 @@
 
 package main
 
+import (
+	"time"
+
+	"github.com/bluefunda/abaper-mcp/internal/logger"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+)
+
 // Handlers holds all MCP request handlers
 type Handlers struct {
 	config    *Config
 	apiClient *APIClient
 	s4Client  *S4Client
+}
+
+// newToolLogger starts a scoped logger for a single tool invocation, tagged
+// with a short request ID, and returns the invocation start time for
+// duration logging.
+func newToolLogger(tool string) (*zap.Logger, time.Time) {
+	requestID := uuid.New().String()[:8]
+	return logger.WithTool(requestID, tool), time.Now()
 }
 
 // NewHandlers creates a new handlers instance
