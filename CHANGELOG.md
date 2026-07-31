@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/bluefunda/abaper-mcp/compare/v0.10.4...v0.10.5) (2026-07-31)
+
+
+### Bug Fixes
+
+* **release:** remove dead/misconfigured docker pipe from .goreleaser.yml ([#74](https://github.com/bluefunda/abaper-mcp/issues/74)) ([b783262](https://github.com/bluefunda/abaper-mcp/commit/b78326214c1b82befc2e78010991ba7f9efe6d83))
+
 ## [0.10.4](https://github.com/bluefunda/abaper-mcp/compare/v0.10.3...v0.10.4) (2026-07-31)
 
 
