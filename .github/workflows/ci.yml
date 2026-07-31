@@ -10,7 +10,7 @@ jobs:
   ci:
     uses: bluefunda/release-foundry/.github/workflows/go-ci.yml@main
     with:
-      go-version: '1.24'
+      go-version: '1.26'
       goprivate: github.com/bluefunda/*
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}

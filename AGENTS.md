@@ -3,7 +3,7 @@
 ## Project Identity
 
 - **Name:** abaper-mcp
-- **Language:** Go 1.25
+- **Language:** Go 1.26
 - **Module:** `github.com/bluefunda/abaper-mcp`
 - **Type:** MCP (Model Context Protocol) server for SAP ABAP operations
 - **Binary:** `abaper-mcp`

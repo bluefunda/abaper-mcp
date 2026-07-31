@@ -4,7 +4,7 @@
 
 Go MCP (Model Context Protocol) server for SAP ABAP operations. Delegates all SAP/ADT calls to `abaper-ts` REST backend via `APIClient`.
 
-Module: `github.com/bluefunda/abaper-mcp` | Go 1.25
+Module: `github.com/bluefunda/abaper-mcp` | Go 1.26
 
 ## Build & Verify
 
