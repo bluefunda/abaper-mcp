@@ -3,7 +3,7 @@
     "abaper": {
       "command": "/usr/local/bin/abaper-mcp",
       "env": {
-        "ABAPER_TS_URL": "https://your-abaper-ts-host",
+        "ABAPER_BACKEND_URL": "https://your-abaper-host",
         "LOG_LEVEL": "info"
       }
     }

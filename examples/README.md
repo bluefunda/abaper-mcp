@@ -6,7 +6,7 @@ Configuration examples for deploying `abaper-mcp` with various AI assistants and
 
 Adds `abaper-mcp` to Claude Desktop as a local MCP server (stdio mode).
 
-Copy the config snippet into your Claude Desktop config file and update `ABAPER_TS_URL`:
+Copy the config snippet into your Claude Desktop config file and update `ABAPER_BACKEND_URL`:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -17,7 +17,7 @@ Copy the config snippet into your Claude Desktop config file and update `ABAPER_
     "abaper": {
       "command": "/usr/local/bin/abaper-mcp",
       "env": {
-        "ABAPER_TS_URL": "https://your-abaper-ts-host"
+        "ABAPER_BACKEND_URL": "https://your-abaper-host"
       }
     }
   }
@@ -38,7 +38,7 @@ Create or edit `.cursor/mcp.json` in your project root (or the global `~/.cursor
     "abaper": {
       "command": "/usr/local/bin/abaper-mcp",
       "env": {
-        "ABAPER_TS_URL": "https://your-abaper-ts-host"
+        "ABAPER_BACKEND_URL": "https://your-abaper-host"
       }
     }
   }
@@ -49,11 +49,11 @@ See [`cursor/mcp.json`](cursor/mcp.json).
 
 ## docker
 
-Runs `abaper-mcp` in SSE mode alongside `abaper-ts` using Docker Compose.
+Runs `abaper-mcp` in SSE mode alongside `abaper` using Docker Compose.
 
 ```bash
 cd examples/docker
-# Set ABAPER_TS_URL in docker-compose.yml to point at your abaper-ts instance
+# Set ABAPER_BACKEND_URL in docker-compose.yml to point at your abaper instance
 docker compose up -d
 ```
 

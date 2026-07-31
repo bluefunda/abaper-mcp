@@ -25,7 +25,7 @@ type Handlers struct {
 func NewHandlers(config *Config) *Handlers {
 	h := &Handlers{
 		config:    config,
-		apiClient: NewAPIClient(config.AbaperTSURL),
+		apiClient: NewAPIClient(config.BackendURL),
 	}
 	if config.S4TemporalURL != "" {
 		h.s4Client = NewS4Client(config.S4TemporalURL)

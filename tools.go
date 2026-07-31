@@ -73,7 +73,7 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 		Description: "Analyze ABAP code for S/4HANA compatibility issues and provide remediation suggestions. Returns both structured JSON and human-readable Markdown report formats.",
 	}, handlers.HandleAnalyzeS4Remediation)
 
-	// New tools enabled by abaper-ts
+	// New tools enabled by abaper
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "syntax-check",
@@ -136,7 +136,7 @@ type GetObjectOutput struct {
 	Description string `json:"description,omitempty" jsonschema:"Object description if available"`
 }
 
-// HandleGetObject retrieves ABAP object source code via abaper-ts
+// HandleGetObject retrieves ABAP object source code via abaper
 func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest, input GetObjectInput) (*mcp.CallToolResult, GetObjectOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -217,7 +217,7 @@ type ObjectInfo struct {
 	Package     string `json:"package,omitempty" jsonschema:"Package name"`
 }
 
-// HandleSearchObjects searches for ABAP objects via abaper-ts
+// HandleSearchObjects searches for ABAP objects via abaper
 func (h *Handlers) HandleSearchObjects(ctx context.Context, req *mcp.CallToolRequest, input SearchObjectsInput) (*mcp.CallToolResult, SearchObjectsOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -272,7 +272,7 @@ type PackageInfo struct {
 	Description string `json:"description,omitempty" jsonschema:"Package description"`
 }
 
-// HandleListPackages lists ABAP packages via abaper-ts
+// HandleListPackages lists ABAP packages via abaper
 func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequest, input ListPackagesInput) (*mcp.CallToolResult, ListPackagesOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -313,7 +313,7 @@ type TestConnectionOutput struct {
 	Message   string `json:"message" jsonschema:"Connection status message"`
 }
 
-// HandleTestConnection tests ADT connection via abaper-ts
+// HandleTestConnection tests ADT connection via abaper
 func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRequest, input TestConnectionInput) (*mcp.CallToolResult, TestConnectionOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -375,7 +375,7 @@ var creatableTypes = map[string]bool{
 	"srvb": true, "service_binding": true,
 }
 
-// HandleCreateObject creates any supported ABAP object type via abaper-ts.
+// HandleCreateObject creates any supported ABAP object type via abaper.
 // If the object already exists, it is updated instead (idempotent).
 func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequest, input CreateObjectInput) (*mcp.CallToolResult, CreateObjectOutput, error) {
 	requestID := uuid.New().String()[:8]
@@ -507,7 +507,7 @@ type UpdateObjectOutput struct {
 	Errors      []string `json:"errors,omitempty"`
 }
 
-// HandleUpdateObject updates any supported ABAP object type via abaper-ts.
+// HandleUpdateObject updates any supported ABAP object type via abaper.
 func (h *Handlers) HandleUpdateObject(ctx context.Context, req *mcp.CallToolRequest, input UpdateObjectInput) (*mcp.CallToolResult, UpdateObjectOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -579,7 +579,7 @@ type ActivateObjectOutput struct {
 	Errors      []string `json:"errors,omitempty"`
 }
 
-// HandleActivateObject activates an ABAP object via abaper-ts
+// HandleActivateObject activates an ABAP object via abaper
 func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRequest, input ActivateObjectInput) (*mcp.CallToolResult, ActivateObjectOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -686,7 +686,7 @@ type RunUnitTestsOutput struct {
 	Errors      []string `json:"errors,omitempty"`
 }
 
-// HandleRunUnitTests runs ABAP unit tests via abaper-ts
+// HandleRunUnitTests runs ABAP unit tests via abaper
 func (h *Handlers) HandleRunUnitTests(ctx context.Context, req *mcp.CallToolRequest, input RunUnitTestsInput) (*mcp.CallToolResult, RunUnitTestsOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -782,7 +782,7 @@ type SyntaxCheckOutput struct {
 	Errors      []string `json:"errors,omitempty"`
 }
 
-// HandleSyntaxCheck performs syntax check via abaper-ts
+// HandleSyntaxCheck performs syntax check via abaper
 func (h *Handlers) HandleSyntaxCheck(ctx context.Context, req *mcp.CallToolRequest, input SyntaxCheckInput) (*mcp.CallToolResult, SyntaxCheckOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -850,7 +850,7 @@ type FormatCodeOutput struct {
 	FormattedCode string `json:"formatted_code" jsonschema:"Formatted ABAP source code"`
 }
 
-// HandleFormatCode formats ABAP source code via abaper-ts
+// HandleFormatCode formats ABAP source code via abaper
 func (h *Handlers) HandleFormatCode(ctx context.Context, req *mcp.CallToolRequest, input FormatCodeInput) (*mcp.CallToolResult, FormatCodeOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -891,7 +891,7 @@ type TransportInfoOutput struct {
 	Count      int    `json:"count" jsonschema:"Number of transports found"`
 }
 
-// HandleTransportInfo retrieves transport info via abaper-ts
+// HandleTransportInfo retrieves transport info via abaper
 func (h *Handlers) HandleTransportInfo(ctx context.Context, req *mcp.CallToolRequest, input TransportInfoInput) (*mcp.CallToolResult, TransportInfoOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -946,7 +946,7 @@ type CreateTransportOutput struct {
 	Message         string `json:"message" jsonschema:"Result message"`
 }
 
-// HandleCreateTransport creates a transport request via abaper-ts
+// HandleCreateTransport creates a transport request via abaper
 func (h *Handlers) HandleCreateTransport(ctx context.Context, req *mcp.CallToolRequest, input CreateTransportInput) (*mcp.CallToolResult, CreateTransportOutput, error) {
 	requestID := uuid.New().String()[:8]
 	start := time.Now()
@@ -1237,6 +1237,14 @@ func (h *Handlers) HandleS4BatchAnalyze(ctx context.Context, req *mcp.CallToolRe
 	if input.Script == "" {
 		log.Warn("Validation failed: script is required")
 		return &mcp.CallToolResult{IsError: true}, S4BatchAnalyzeOutput{}, fmt.Errorf("script is required")
+	}
+
+	// Only allow known batch scripts through to the script-executing backend.
+	if !h.config.IsScriptAllowed(input.Script) {
+		log.Warn("Validation failed: script not allowed", zap.String("script", input.Script))
+		return &mcp.CallToolResult{IsError: true}, S4BatchAnalyzeOutput{}, fmt.Errorf(
+			"script %q is not allowed; permitted scripts: %s",
+			input.Script, strings.Join(h.config.AllowedScripts(), ", "))
 	}
 
 	result, err := h.s4Client.RunScript(ctx, S4RunRequest{

@@ -19,7 +19,7 @@ abaper-mcp (Go)
   └── Prompts: analyze-abap, review-abap, test-abap, etc.
   │
   ▼
-abaper-ts REST API (http://abaper-ts:8080)
+abaper REST API (http://abaper:8080)
   │
   ▼
 SAP System (ADT)
@@ -27,10 +27,10 @@ SAP System (ADT)
 
 ## Key Design Decision
 
-ABAPer MCP does **not** connect to SAP directly. It calls **abaper-ts** REST APIs, which handle the actual ADT communication. This separation means:
+ABAPer MCP does **not** connect to SAP directly. It calls **abaper** REST APIs, which handle the actual ADT communication. This separation means:
 
-- abaper-mcp only needs `ABAPER_TS_URL` — no SAP credentials
-- abaper-ts manages connection pooling, credential resolution, and ADT protocol details
+- abaper-mcp only needs `ABAPER_BACKEND_URL` — no SAP credentials
+- abaper manages connection pooling, credential resolution, and ADT protocol details
 - abaper-mcp focuses on MCP protocol and tool orchestration
 
 ## Operational Modes
@@ -106,7 +106,7 @@ Pre-configured analysis workflows:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ABAPER_TS_URL` | URL of abaper-ts REST API | `http://localhost:8080` |
+| `ABAPER_BACKEND_URL` | URL of abaper REST API | `http://localhost:8080` |
 | `ABAPER_MODE` | Operational mode (stdio/sse/nats/dual) | `stdio` |
 | `ABAPER_HTTP_PORT` | SSE mode listen port | `8015` |
 | `ABAPER_HTTP_HOST` | SSE mode listen host | `0.0.0.0` |
@@ -124,7 +124,7 @@ In the ABAPer platform, abaper-mcp runs in **SSE mode** as a Docker container:
 ```
 Container: abaper-mcp (:8015)
   ABAPER_MODE=sse
-  ABAPER_TS_URL=http://abaper-ts:8080
+  ABAPER_BACKEND_URL=http://abaper:8080
 ```
 
 The cai-llm-router connects to it via `http://abaper-mcp:8015/sse` as an MCP server.
@@ -139,7 +139,7 @@ For local use with Claude Desktop, run in **stdio mode**:
     "abaper": {
       "command": "/path/to/abaper-mcp",
       "env": {
-        "ABAPER_TS_URL": "http://localhost:8080"
+        "ABAPER_BACKEND_URL": "http://localhost:8080"
       }
     }
   }

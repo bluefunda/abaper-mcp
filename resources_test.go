@@ -32,7 +32,7 @@ func newTestMCPSessionWithResources(t *testing.T, backend http.HandlerFunc) *mcp
 	ts := httptest.NewServer(backend)
 	t.Cleanup(ts.Close)
 
-	config := &Config{AbaperTSURL: ts.URL}
+	config := &Config{BackendURL: ts.URL}
 	handlers := NewHandlers(config)
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "abaper-mcp-test", Version: "test"}, nil)

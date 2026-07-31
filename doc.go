@@ -16,8 +16,9 @@
 //
 // It bridges AI assistants (Claude Desktop, Claude Code, Cursor, Windsurf) to
 // live SAP systems by exposing ABAP operations as MCP tools, resources, and
-// prompts. All ADT calls are delegated to an abaper-ts REST backend; this
-// binary does not connect to SAP directly.
+// prompts. All ADT calls are delegated to the abaper REST backend (formerly
+// abaper-ts, reachable via the abaper-bff gateway); this binary does not
+// connect to SAP directly.
 //
 // # Installation
 //
@@ -32,7 +33,7 @@
 //	  "mcpServers": {
 //	    "abaper": {
 //	      "command": "/usr/local/bin/abaper-mcp",
-//	      "env": { "ABAPER_TS_URL": "https://your-abaper-ts-host" }
+//	      "env": { "ABAPER_BACKEND_URL": "https://your-abaper-host" }
 //	    }
 //	  }
 //	}
@@ -41,11 +42,14 @@
 //
 // All configuration is via environment variables:
 //
-//	ABAPER_TS_URL      URL of the abaper-ts backend (default: http://localhost:8080)
+//	ABAPER_BACKEND_URL URL of the abaper backend (default: http://localhost:8080)
+//	ABAPER_TS_URL      Deprecated alias for ABAPER_BACKEND_URL (still honored)
 //	ABAPER_MODE        Transport: stdio (default) or sse
 //	ABAPER_HTTP_PORT   HTTP port for SSE mode (default: 8015)
 //	ABAPER_HTTP_HOST   HTTP host for SSE mode (default: 0.0.0.0)
+//	ABAPER_AUTH_TOKEN  If set, SSE requests require "Authorization: Bearer <token>" (/health stays public)
 //	S4_TEMPORAL_URL    URL of the s4-temporal API (optional)
+//	S4_ALLOWED_SCRIPTS Comma-separated batch-script allowlist (default: minio-batch-all.sh,minio-batch-folder.sh,minio-batch-xml.sh)
 //	LOG_LEVEL          Log level: debug, info, warn, error (default: info)
 //	LOG_FORMAT         Log format: json (default) or console
 //
@@ -66,7 +70,7 @@
 //   - get-object         — retrieve source code for any ABAP object
 //   - search-objects     — search objects by pattern with wildcard support
 //   - list-packages      — list all ABAP packages
-//   - test-connection    — verify connectivity to abaper-ts
+//   - test-connection    — verify connectivity to abaper
 //   - create-object      — create a new ABAP object with source
 //   - update-object      — update source code of an existing object
 //   - activate-object    — activate an ABAP object after editing

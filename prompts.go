@@ -348,7 +348,7 @@ Explain the code in a way that both technical and non-technical stakeholders can
 	}, nil
 }
 
-// getSourceCode retrieves source code for a given object via abaper-ts
+// getSourceCode retrieves source code for a given object via abaper
 func (h *Handlers) getSourceCode(ctx context.Context, objectType, objectName string) (string, error) {
 	adtType := normalizeObjectType(objectType)
 	result, err := h.apiClient.GetObject(ctx, adtType, objectName, "")

@@ -25,11 +25,11 @@ All four commands must pass before any change is considered complete.
 AI assistant (Claude Desktop / Cursor / Windsurf)
   → MCP protocol (stdio or HTTP/SSE)
     → abaper-mcp  ← this repo
-      → abaper-ts REST API (ABAPER_TS_URL)
+      → abaper REST API (ABAPER_BACKEND_URL)
         → SAP system (ADT)
 ```
 
-**Critical constraint:** abaper-mcp does NOT connect to SAP directly. All SAP/ADT calls are delegated to the `abaper-ts` REST backend via `APIClient`. The only required runtime config is `ABAPER_TS_URL`.
+**Critical constraint:** abaper-mcp does NOT connect to SAP directly. All SAP/ADT calls are delegated to the `abaper` REST backend via `APIClient`. The only required runtime config is `ABAPER_BACKEND_URL`.
 
 ## Operational Modes
 
@@ -48,7 +48,7 @@ Set via `ABAPER_MODE`:
 | `config.go` | Config struct (`AbaperTSURL`), validation | Yes |
 | `handlers.go` | `Handlers` struct (holds `Config` + `APIClient`) | Yes |
 | `tools.go` | **All MCP tool definitions, input/output types, and handler implementations** | Yes — primary extension point |
-| `apiclient.go` | HTTP client for abaper-ts REST API (`APIClient`) | Yes |
+| `apiclient.go` | HTTP client for abaper REST API (`APIClient`) | Yes |
 | `resources.go` | MCP resource templates (`abap://class/{name}`, etc.) | Yes |
 | `prompts.go` | MCP prompt definitions and handlers | Yes |
 | `s4_remediation.go` | S/4HANA compatibility analysis (pattern-based, local) | Yes |
@@ -87,7 +87,7 @@ Everything is `package main` except `internal/logger`. Do not introduce new pack
        requestID := uuid.New().String()[:8]
        log := logger.WithTool(requestID, "my-tool")
        log.Info("my-tool start", zap.String("name", input.Name))
-       // Use h.apiClient for abaper-ts calls
+       // Use h.apiClient for abaper calls
        return nil, output, nil
    }
    ```
@@ -104,7 +104,7 @@ Everything is `package main` except `internal/logger`. Do not introduce new pack
 
 - Every handler gets a `requestID` via `uuid.New().String()[:8]` and a scoped logger via `logger.WithTool(requestID, "tool-name")`
 - Log start, completion, and errors with `zap` structured fields
-- Normalize object types with `normalizeObjectType()` before sending to abaper-ts
+- Normalize object types with `normalizeObjectType()` before sending to abaper
 - Return `*mcp.CallToolResult{IsError: true}` for user-facing errors
 
 ## How to Add a Resource
@@ -121,18 +121,18 @@ server.AddResourceTemplate(&mcp.ResourceTemplate{
 
 ## API Client Usage
 
-`APIClient` in `apiclient.go` wraps HTTP calls to abaper-ts. All responses follow the envelope:
+`APIClient` in `apiclient.go` wraps HTTP calls to abaper. All responses follow the envelope:
 ```json
 {"success": true, "data": {...}, "error": "..."}
 ```
 
-Add new abaper-ts endpoint methods directly on `APIClient`.
+Add new abaper endpoint methods directly on `APIClient`.
 
 ## Testing
 
 - Run: `make test`
 - Test files: `*_test.go` in root package
-- Tests do not require a running SAP system or abaper-ts instance
+- Tests do not require a running SAP system or abaper instance
 - Add `*_test.go` files for any new or modified code
 
 ## Code Conventions
@@ -172,14 +172,14 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `sec
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ABAPER_TS_URL` | Yes | `http://localhost:8080` | abaper-ts REST API URL |
+| `ABAPER_BACKEND_URL` | Yes | `http://localhost:8080` | abaper REST API URL |
 | `ABAPER_MODE` | No | `stdio` | `stdio` or `sse` |
 | `LOG_LEVEL` | No | `info` | `debug`/`info`/`warn`/`error` |
 | `LOG_FORMAT` | No | `json` | `json`/`console` |
 
 ## Do NOT
 
-- Connect to SAP directly — always go through abaper-ts via `APIClient`
+- Connect to SAP directly — always go through abaper via `APIClient`
 - Introduce new Go packages without explicit request
 - Modify CI/CD workflows without explicit request
 - Add `.env` or credentials to version control
