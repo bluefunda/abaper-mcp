@@ -27,3 +27,15 @@ jobs:
       tag: ${{ needs.release.outputs.tag_name }}
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
+
+  binaries:
+    needs: [release]
+    if: ${{ needs.release.outputs.release_created }}
+    permissions:
+      contents: write # upload GoReleaser archives/checksums to the GitHub release
+      id-token: write # mint the OIDC token for cosign keyless signing
+    uses: bluefunda/release-foundry/.github/workflows/go-binary-release.yml@main
+    with:
+      tag: ${{ needs.release.outputs.tag_name }}
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
