@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/bluefunda/abaper-mcp/compare/v0.10.0...v0.10.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* resolve high-severity review findings + propagate context ([#65](https://github.com/bluefunda/abaper-mcp/issues/65)) ([339e8dd](https://github.com/bluefunda/abaper-mcp/commit/339e8dd8db9dfe336ae64b76e369c266d51c3d4c))
+
 ## [0.10.0](https://github.com/bluefunda/abaper-mcp/compare/v0.9.2...v0.10.0) (2026-06-03)
 
 
