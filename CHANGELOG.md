@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/bluefunda/abaper-mcp/compare/v0.10.1...v0.10.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* address medium-severity review findings (graceful shutdown, s4 perf, error preservation) ([#67](https://github.com/bluefunda/abaper-mcp/issues/67)) ([c91809a](https://github.com/bluefunda/abaper-mcp/commit/c91809a15a2aba4ea8ad16b93149a019606fcf6e))
+
 ## [0.10.1](https://github.com/bluefunda/abaper-mcp/compare/v0.10.0...v0.10.1) (2026-07-31)
 
 
