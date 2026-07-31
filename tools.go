@@ -793,6 +793,11 @@ func (h *Handlers) HandleSyntaxCheck(ctx context.Context, req *mcp.CallToolReque
 		zap.String("object_name", input.ObjectName),
 	)
 
+	if input.ObjectType == "" || input.ObjectName == "" || input.SourceCode == "" {
+		log.Warn("Validation failed: object_type, object_name, and source_code are required")
+		return &mcp.CallToolResult{IsError: true}, SyntaxCheckOutput{}, fmt.Errorf("object_type, object_name, and source_code are required")
+	}
+
 	adtType := normalizeObjectType(input.ObjectType)
 	result, err := h.apiClient.SyntaxCheck(ctx, adtType, input.ObjectName, input.SourceCode)
 	if err != nil {
@@ -860,6 +865,11 @@ func (h *Handlers) HandleFormatCode(ctx context.Context, req *mcp.CallToolReques
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
+	if input.SourceCode == "" {
+		log.Warn("Validation failed: source_code is required")
+		return &mcp.CallToolResult{IsError: true}, FormatCodeOutput{}, fmt.Errorf("source_code is required")
+	}
+
 	formatted, err := h.apiClient.FormatSource(ctx, input.SourceCode)
 	if err != nil {
 		log.Error("Format failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
@@ -901,6 +911,11 @@ func (h *Handlers) HandleTransportInfo(ctx context.Context, req *mcp.CallToolReq
 		zap.String("object_type", input.ObjectType),
 		zap.String("object_name", input.ObjectName),
 	)
+
+	if input.ObjectType == "" || input.ObjectName == "" {
+		log.Warn("Validation failed: object_type and object_name are required")
+		return &mcp.CallToolResult{IsError: true}, TransportInfoOutput{}, fmt.Errorf("object_type and object_name are required")
+	}
 
 	adtType := normalizeObjectType(input.ObjectType)
 	result, err := h.apiClient.TransportInfo(ctx, adtType, input.ObjectName, input.Package)
@@ -957,6 +972,14 @@ func (h *Handlers) HandleCreateTransport(ctx context.Context, req *mcp.CallToolR
 		zap.String("object_name", input.ObjectName),
 		zap.String("description", input.Description),
 	)
+
+	if input.ObjectType == "" || input.ObjectName == "" {
+		log.Warn("Validation failed: object_type and object_name are required")
+		return nil, CreateTransportOutput{
+			Success: false,
+			Message: "object_type and object_name are required",
+		}, nil
+	}
 
 	adtType := normalizeObjectType(input.ObjectType)
 	pkg := input.Package

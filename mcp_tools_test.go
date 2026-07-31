@@ -666,21 +666,59 @@ func TestSyntaxCheckTool(t *testing.T) {
 			t.Error("expected IsError=true when the backend call itself fails")
 		}
 	})
+
+	t.Run("empty source_code is rejected without calling the backend", func(t *testing.T) {
+		called := false
+		session := newTestMCPSession(t, func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"messages": []any{}}})
+		})
+		_, res := callTool[SyntaxCheckOutput](t, session, "syntax-check", map[string]any{
+			"object_type": "program",
+			"object_name": "ZFOO",
+			"source_code": "",
+		})
+		if !res.IsError {
+			t.Error("expected IsError=true for empty source_code")
+		}
+		if called {
+			t.Error("backend must not be called when required input is missing")
+		}
+	})
 }
 
 func TestFormatCodeTool(t *testing.T) {
-	session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
-		"source": "REPORT zfoo.\n\nWRITE 'hello'.",
-	}, ""))
-	out, res := callTool[FormatCodeOutput](t, session, "format-code", map[string]any{
-		"source_code": "report zfoo.\nwrite 'hello'.",
+	t.Run("success", func(t *testing.T) {
+		session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
+			"source": "REPORT zfoo.\n\nWRITE 'hello'.",
+		}, ""))
+		out, res := callTool[FormatCodeOutput](t, session, "format-code", map[string]any{
+			"source_code": "report zfoo.\nwrite 'hello'.",
+		})
+		if res.IsError {
+			t.Fatalf("unexpected tool error: %+v", res)
+		}
+		if out.FormattedCode != "REPORT zfoo.\n\nWRITE 'hello'." {
+			t.Errorf("unexpected formatted code: %q", out.FormattedCode)
+		}
 	})
-	if res.IsError {
-		t.Fatalf("unexpected tool error: %+v", res)
-	}
-	if out.FormattedCode != "REPORT zfoo.\n\nWRITE 'hello'." {
-		t.Errorf("unexpected formatted code: %q", out.FormattedCode)
-	}
+
+	t.Run("empty source_code is rejected without calling the backend", func(t *testing.T) {
+		called := false
+		session := newTestMCPSession(t, func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"source": ""}})
+		})
+		_, res := callTool[FormatCodeOutput](t, session, "format-code", map[string]any{
+			"source_code": "",
+		})
+		if !res.IsError {
+			t.Error("expected IsError=true for empty source_code")
+		}
+		if called {
+			t.Error("backend must not be called when required input is missing")
+		}
+	})
 }
 
 func TestTransportInfoTool(t *testing.T) {
@@ -723,6 +761,24 @@ func TestTransportInfoTool_NoTransports(t *testing.T) {
 	}
 }
 
+func TestTransportInfoTool_MissingObjectName(t *testing.T) {
+	called := false
+	session := newTestMCPSession(t, func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"transports": []any{}}})
+	})
+	_, res := callTool[TransportInfoOutput](t, session, "transport-info", map[string]any{
+		"object_type": "program",
+		"object_name": "",
+	})
+	if !res.IsError {
+		t.Error("expected IsError=true when object_name is empty")
+	}
+	if called {
+		t.Error("backend must not be called when required input is missing")
+	}
+}
+
 func TestCreateTransportTool(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		session := newTestMCPSession(t, envelopeHandler(t, true, map[string]any{
@@ -756,6 +812,28 @@ func TestCreateTransportTool(t *testing.T) {
 		}
 		if out.Success {
 			t.Error("expected Success=false")
+		}
+	})
+
+	t.Run("missing object_name is rejected without calling the backend", func(t *testing.T) {
+		called := false
+		session := newTestMCPSession(t, func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{}})
+		})
+		out, res := callTool[CreateTransportOutput](t, session, "create-transport", map[string]any{
+			"object_type": "program",
+			"object_name": "",
+			"description": "My change",
+		})
+		if res.IsError {
+			t.Fatalf("unexpected protocol-level error: %+v", res)
+		}
+		if out.Success {
+			t.Error("expected Success=false when object_name is empty")
+		}
+		if called {
+			t.Error("backend must not be called when required input is missing")
 		}
 	})
 }
