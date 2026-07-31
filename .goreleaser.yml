@@ -71,6 +71,29 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+# Software Bill of Materials for every release archive, using syft.
+sboms:
+  - id: archive-sboms
+    artifacts: archive
+
+# Keyless signing (Sigstore/Fulcio via GitHub OIDC) of the checksum manifest.
+# Verifying the signed checksums.txt is sufficient to trust every archive:
+#   cosign verify-blob --certificate-identity-regexp='.*' \
+#     --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
+#     --certificate checksums.txt.pem --signature checksums.txt.sig checksums.txt
+signs:
+  - id: checksum-sign
+    cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--yes"
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+    artifacts: checksum
+    output: true
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
@@ -213,7 +236,7 @@ nfpms:
       Model Context Protocol server for SAP ABAP development.
       Enables AI assistants like Claude to interact with SAP ABAP systems
       through the ABAP Development Tools (ADT) REST API.
-    license: MIT
+    license: Apache-2.0
     formats:
       - deb
       - rpm
@@ -272,7 +295,7 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/bluefunda/abaper-mcp"
       - "--label=org.opencontainers.image.description=Model Context Protocol server for SAP ABAP development"
       - "--label=org.opencontainers.image.vendor=BlueFunda, Inc."
-      - "--label=org.opencontainers.image.licenses=MIT"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
       - "--build-arg=VERSION={{.Version}}"
       - "--build-arg=BUILD_TIME={{.Date}}"
       - "--build-arg=GIT_COMMIT={{.FullCommit}}"
@@ -305,7 +328,7 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/bluefunda/abaper-mcp"
       - "--label=org.opencontainers.image.description=Model Context Protocol server for SAP ABAP development - ARM64"
       - "--label=org.opencontainers.image.vendor=BlueFunda, Inc."
-      - "--label=org.opencontainers.image.licenses=MIT"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
       - "--build-arg=VERSION={{.Version}}"
       - "--build-arg=BUILD_TIME={{.Date}}"
       - "--build-arg=GIT_COMMIT={{.FullCommit}}"
