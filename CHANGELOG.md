@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/bluefunda/abaper-mcp/compare/v0.10.3...v0.10.4) (2026-07-31)
+
+
+### Bug Fixes
+
+* **tools:** validate required inputs on 4 handlers (partial [#64](https://github.com/bluefunda/abaper-mcp/issues/64)), trigger release ([#72](https://github.com/bluefunda/abaper-mcp/issues/72)) ([a7bc0c7](https://github.com/bluefunda/abaper-mcp/commit/a7bc0c756e73a933cbaf9eb09f285d479d06e7d4))
+
 ## [0.10.3](https://github.com/bluefunda/abaper-mcp/compare/v0.10.2...v0.10.3) (2026-07-31)
 
 
