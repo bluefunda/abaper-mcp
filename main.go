@@ -16,9 +16,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/bluefunda/abaper-mcp/internal/logger"
@@ -85,7 +88,10 @@ func main() {
 	registerResources(server, handlers)
 	registerPrompts(server, handlers)
 
-	ctx := context.Background()
+	// Cancel the root context on SIGINT/SIGTERM so both transports can shut
+	// down gracefully instead of being killed mid-request.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	switch mode {
 	case "sse":
@@ -97,9 +103,12 @@ func main() {
 
 func runStdioMode(ctx context.Context, server *mcp.Server) {
 	logger.L.Info("Running in stdio mode")
-	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil {
+	// server.Run returns when ctx is cancelled (SIGINT/SIGTERM); that is a
+	// clean shutdown, not a server error.
+	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil && !errors.Is(err, context.Canceled) {
 		logger.L.Fatal("Server error", zap.Error(err))
 	}
+	logger.L.Info("Server shut down cleanly")
 }
 
 func runSSEMode(ctx context.Context, server *mcp.Server) {
@@ -162,8 +171,25 @@ func runSSEMode(ctx context.Context, server *mcp.Server) {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	if err := srv.ListenAndServe(); err != nil {
+	serverErr := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case err := <-serverErr:
 		logger.L.Fatal("HTTP server error", zap.Error(err))
+	case <-ctx.Done():
+		logger.L.Info("Shutdown signal received, draining connections")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logger.L.Error("Graceful shutdown failed", zap.Error(err))
+			return
+		}
+		logger.L.Info("Server shut down cleanly")
 	}
 }
 

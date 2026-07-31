@@ -19,8 +19,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bluefunda/abaper-mcp/internal/logger"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.uber.org/zap"
 )
+
+// resourceFetchError maps a backend fetch error to the appropriate MCP error.
+// A genuine "not found" becomes ResourceNotFoundError; any other error
+// (network, auth, backend failure) is logged and wrapped so the real cause is
+// preserved instead of being masked as a missing resource.
+func resourceFetchError(uri string, err error) error {
+	if IsNotFound(err) {
+		return mcp.ResourceNotFoundError(uri)
+	}
+	logger.L.Error("resource fetch failed", zap.String("uri", uri), zap.Error(err))
+	return fmt.Errorf("failed to read resource %s: %w", uri, err)
+}
 
 // registerResources registers all MCP resources
 func registerResources(server *mcp.Server, handlers *Handlers) {
@@ -90,7 +104,7 @@ func (h *Handlers) HandleProgramResource(ctx context.Context, req *mcp.ReadResou
 
 	result, err := h.apiClient.GetObject(ctx, "PROG", name, "")
 	if err != nil {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		return nil, resourceFetchError(req.Params.URI, err)
 	}
 
 	return &mcp.ReadResourceResult{
@@ -113,7 +127,7 @@ func (h *Handlers) HandleClassResource(ctx context.Context, req *mcp.ReadResourc
 
 	result, err := h.apiClient.GetObject(ctx, "CLAS", name, "")
 	if err != nil {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		return nil, resourceFetchError(req.Params.URI, err)
 	}
 
 	return &mcp.ReadResourceResult{
@@ -141,7 +155,7 @@ func (h *Handlers) HandleFunctionResource(ctx context.Context, req *mcp.ReadReso
 
 	result, err := h.apiClient.GetObject(ctx, "FUNC", name, group)
 	if err != nil {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		return nil, resourceFetchError(req.Params.URI, err)
 	}
 
 	return &mcp.ReadResourceResult{
@@ -164,7 +178,7 @@ func (h *Handlers) HandleInterfaceResource(ctx context.Context, req *mcp.ReadRes
 
 	result, err := h.apiClient.GetObject(ctx, "INTF", name, "")
 	if err != nil {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		return nil, resourceFetchError(req.Params.URI, err)
 	}
 
 	return &mcp.ReadResourceResult{
@@ -187,7 +201,7 @@ func (h *Handlers) HandleTableResource(ctx context.Context, req *mcp.ReadResourc
 
 	result, err := h.apiClient.GetObject(ctx, "TABL", name, "")
 	if err != nil {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		return nil, resourceFetchError(req.Params.URI, err)
 	}
 
 	return &mcp.ReadResourceResult{
@@ -210,7 +224,7 @@ func (h *Handlers) HandleStructureResource(ctx context.Context, req *mcp.ReadRes
 
 	result, err := h.apiClient.GetObject(ctx, "STRU", name, "")
 	if err != nil {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		return nil, resourceFetchError(req.Params.URI, err)
 	}
 
 	return &mcp.ReadResourceResult{
@@ -233,7 +247,7 @@ func (h *Handlers) HandleIncludeResource(ctx context.Context, req *mcp.ReadResou
 
 	result, err := h.apiClient.GetObject(ctx, "INCL", name, "")
 	if err != nil {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		return nil, resourceFetchError(req.Params.URI, err)
 	}
 
 	return &mcp.ReadResourceResult{
