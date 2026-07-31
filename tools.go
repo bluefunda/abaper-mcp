@@ -20,8 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bluefunda/abaper-mcp/internal/logger"
-	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/zap"
 )
@@ -138,9 +136,7 @@ type GetObjectOutput struct {
 
 // HandleGetObject retrieves ABAP object source code via abaper
 func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest, input GetObjectInput) (*mcp.CallToolResult, GetObjectOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "get-object")
+	log, start := newToolLogger("get-object")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -157,21 +153,7 @@ func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest
 	}
 
 	// Validate object type
-	validTypes := map[string]bool{
-		"program": true, "prog": true,
-		"class": true, "clas": true,
-		"function": true, "func": true,
-		"interface": true, "intf": true,
-		"table": true, "tabl": true,
-		"data_element": true, "dtel": true,
-		"structure": true, "stru": true,
-		"include": true, "incl": true,
-		"ddls": true, "cds": true, "view": true,
-		"ddlx": true, "metadata_extension": true,
-		"srvd": true, "service_definition": true,
-		"srvb": true, "service_binding": true,
-	}
-	if !validTypes[objectType] {
+	if !readableTypes[objectType] {
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
 		return &mcp.CallToolResult{IsError: true}, GetObjectOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
 	}
@@ -219,9 +201,7 @@ type ObjectInfo struct {
 
 // HandleSearchObjects searches for ABAP objects via abaper
 func (h *Handlers) HandleSearchObjects(ctx context.Context, req *mcp.CallToolRequest, input SearchObjectsInput) (*mcp.CallToolResult, SearchObjectsOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "search-objects")
+	log, start := newToolLogger("search-objects")
 
 	log.Info("Tool execution started",
 		zap.String("pattern", input.Pattern),
@@ -274,9 +254,7 @@ type PackageInfo struct {
 
 // HandleListPackages lists ABAP packages via abaper
 func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequest, input ListPackagesInput) (*mcp.CallToolResult, ListPackagesOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "list-packages")
+	log, start := newToolLogger("list-packages")
 
 	log.Info("Tool execution started")
 
@@ -315,9 +293,7 @@ type TestConnectionOutput struct {
 
 // HandleTestConnection tests ADT connection via abaper
 func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRequest, input TestConnectionInput) (*mcp.CallToolResult, TestConnectionOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "test-connection")
+	log, start := newToolLogger("test-connection")
 
 	log.Info("Tool execution started")
 
@@ -361,7 +337,8 @@ type CreateObjectOutput struct {
 	Errors      []string `json:"errors,omitempty"`
 }
 
-// creatableTypes lists all object types supported by create-object and update-object.
+// creatableTypes lists all object types supported by create-object,
+// update-object, and create-and-activate.
 var creatableTypes = map[string]bool{
 	"program": true, "prog": true,
 	"class": true, "clas": true,
@@ -375,12 +352,55 @@ var creatableTypes = map[string]bool{
 	"srvb": true, "service_binding": true,
 }
 
+// readableTypes lists all object types supported by get-object. Broader than
+// creatableTypes: also covers function modules and standalone structures,
+// which can be read but not created/activated through these tools.
+var readableTypes = map[string]bool{
+	"program": true, "prog": true,
+	"class": true, "clas": true,
+	"function": true, "func": true,
+	"interface": true, "intf": true,
+	"table": true, "tabl": true,
+	"data_element": true, "dtel": true,
+	"structure": true, "stru": true,
+	"include": true, "incl": true,
+	"ddls": true, "cds": true, "view": true,
+	"ddlx": true, "metadata_extension": true,
+	"srvd": true, "service_definition": true,
+	"srvb": true, "service_binding": true,
+}
+
+// activatableTypes lists all object types supported by activate-object.
+// Includes function_group (function modules are activated at the group
+// level), which creatableTypes does not.
+var activatableTypes = map[string]bool{
+	"program": true, "prog": true,
+	"class": true, "clas": true,
+	"interface": true, "intf": true,
+	"include": true, "incl": true,
+	"table": true, "tabl": true,
+	"data_element": true, "dtel": true,
+	"function_group": true, "fugr": true,
+	"ddls": true, "cds": true, "view": true,
+	"ddlx": true, "metadata_extension": true,
+	"srvd": true, "service_definition": true,
+	"srvb": true, "service_binding": true,
+}
+
+// unitTestableTypes lists the object types run-unit-tests accepts — only
+// types that can own ABAP Unit test classes.
+var unitTestableTypes = map[string]bool{
+	"program": true, "prog": true,
+	"class": true, "clas": true,
+	"interface": true, "intf": true,
+	"include": true, "incl": true,
+	"function_group": true, "fugr": true,
+}
+
 // HandleCreateObject creates any supported ABAP object type via abaper.
 // If the object already exists, it is updated instead (idempotent).
 func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequest, input CreateObjectInput) (*mcp.CallToolResult, CreateObjectOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "create-object")
+	log, start := newToolLogger("create-object")
 
 	objectType := strings.ToLower(input.ObjectType)
 	if !creatableTypes[objectType] {
@@ -509,9 +529,7 @@ type UpdateObjectOutput struct {
 
 // HandleUpdateObject updates any supported ABAP object type via abaper.
 func (h *Handlers) HandleUpdateObject(ctx context.Context, req *mcp.CallToolRequest, input UpdateObjectInput) (*mcp.CallToolResult, UpdateObjectOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "update-object")
+	log, start := newToolLogger("update-object")
 
 	objectType := strings.ToLower(input.ObjectType)
 	if !creatableTypes[objectType] {
@@ -581,9 +599,7 @@ type ActivateObjectOutput struct {
 
 // HandleActivateObject activates an ABAP object via abaper
 func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRequest, input ActivateObjectInput) (*mcp.CallToolResult, ActivateObjectOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "activate-object")
+	log, start := newToolLogger("activate-object")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -591,20 +607,7 @@ func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRe
 	)
 
 	objectType := strings.ToLower(input.ObjectType)
-	validTypes := map[string]bool{
-		"program": true, "prog": true,
-		"class": true, "clas": true,
-		"interface": true, "intf": true,
-		"include": true, "incl": true,
-		"table": true, "tabl": true,
-		"data_element": true, "dtel": true,
-		"function_group": true, "fugr": true,
-		"ddls": true, "cds": true, "view": true,
-		"ddlx": true, "metadata_extension": true,
-		"srvd": true, "service_definition": true,
-		"srvb": true, "service_binding": true,
-	}
-	if !validTypes[objectType] {
+	if !activatableTypes[objectType] {
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
 		return &mcp.CallToolResult{IsError: true}, ActivateObjectOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
 	}
@@ -688,9 +691,7 @@ type RunUnitTestsOutput struct {
 
 // HandleRunUnitTests runs ABAP unit tests via abaper
 func (h *Handlers) HandleRunUnitTests(ctx context.Context, req *mcp.CallToolRequest, input RunUnitTestsInput) (*mcp.CallToolResult, RunUnitTestsOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "run-unit-tests")
+	log, start := newToolLogger("run-unit-tests")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -698,14 +699,7 @@ func (h *Handlers) HandleRunUnitTests(ctx context.Context, req *mcp.CallToolRequ
 	)
 
 	objectType := strings.ToLower(input.ObjectType)
-	validTypes := map[string]bool{
-		"program": true, "prog": true,
-		"class": true, "clas": true,
-		"interface": true, "intf": true,
-		"include": true, "incl": true,
-		"function_group": true, "fugr": true,
-	}
-	if !validTypes[objectType] {
+	if !unitTestableTypes[objectType] {
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
 		return &mcp.CallToolResult{IsError: true}, RunUnitTestsOutput{}, fmt.Errorf("unsupported object type: %s", input.ObjectType)
 	}
@@ -784,9 +778,7 @@ type SyntaxCheckOutput struct {
 
 // HandleSyntaxCheck performs syntax check via abaper
 func (h *Handlers) HandleSyntaxCheck(ctx context.Context, req *mcp.CallToolRequest, input SyntaxCheckInput) (*mcp.CallToolResult, SyntaxCheckOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "syntax-check")
+	log, start := newToolLogger("syntax-check")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -857,9 +849,7 @@ type FormatCodeOutput struct {
 
 // HandleFormatCode formats ABAP source code via abaper
 func (h *Handlers) HandleFormatCode(ctx context.Context, req *mcp.CallToolRequest, input FormatCodeInput) (*mcp.CallToolResult, FormatCodeOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "format-code")
+	log, start := newToolLogger("format-code")
 
 	log.Info("Tool execution started",
 		zap.Int("source_len", len(input.SourceCode)),
@@ -903,9 +893,7 @@ type TransportInfoOutput struct {
 
 // HandleTransportInfo retrieves transport info via abaper
 func (h *Handlers) HandleTransportInfo(ctx context.Context, req *mcp.CallToolRequest, input TransportInfoInput) (*mcp.CallToolResult, TransportInfoOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "transport-info")
+	log, start := newToolLogger("transport-info")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -963,9 +951,7 @@ type CreateTransportOutput struct {
 
 // HandleCreateTransport creates a transport request via abaper
 func (h *Handlers) HandleCreateTransport(ctx context.Context, req *mcp.CallToolRequest, input CreateTransportInput) (*mcp.CallToolResult, CreateTransportOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "create-transport")
+	log, start := newToolLogger("create-transport")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -1047,9 +1033,7 @@ type CreateAndActivateOutput struct {
 
 // HandleCreateAndActivate checks existence, creates or updates, and activates in one call
 func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToolRequest, input CreateAndActivateInput) (*mcp.CallToolResult, CreateAndActivateOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "create-and-activate")
+	log, start := newToolLogger("create-and-activate")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -1057,21 +1041,9 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
-	// Validate object type
+	// Validate object type (same set create-object/update-object support)
 	objectType := strings.ToLower(input.ObjectType)
-	validTypes := map[string]bool{
-		"program": true, "prog": true,
-		"class": true, "clas": true,
-		"interface": true, "intf": true,
-		"include": true, "incl": true,
-		"table": true, "tabl": true,
-		"data_element": true, "dtel": true,
-		"ddls": true, "cds": true, "view": true,
-		"ddlx": true, "metadata_extension": true,
-		"srvd": true, "service_definition": true,
-		"srvb": true, "service_binding": true,
-	}
-	if !validTypes[objectType] {
+	if !creatableTypes[objectType] {
 		log.Warn("Validation failed: unsupported object type", zap.String("object_type", input.ObjectType))
 		return nil, CreateAndActivateOutput{
 			Success:    false,
@@ -1247,9 +1219,7 @@ type S4BatchAnalyzeOutput struct {
 
 // HandleS4BatchAnalyze triggers a batch S/4HANA analysis via s4-temporal
 func (h *Handlers) HandleS4BatchAnalyze(ctx context.Context, req *mcp.CallToolRequest, input S4BatchAnalyzeInput) (*mcp.CallToolResult, S4BatchAnalyzeOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "s4-batch-analyze")
+	log, start := newToolLogger("s4-batch-analyze")
 
 	log.Info("Tool execution started",
 		zap.String("script", input.Script),
@@ -1308,9 +1278,7 @@ type S4WorkflowStatusOutput struct {
 
 // HandleS4WorkflowStatus checks the status of an S4 analysis workflow
 func (h *Handlers) HandleS4WorkflowStatus(ctx context.Context, req *mcp.CallToolRequest, input S4WorkflowStatusInput) (*mcp.CallToolResult, S4WorkflowStatusOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "s4-workflow-status")
+	log, start := newToolLogger("s4-workflow-status")
 
 	log.Info("Tool execution started",
 		zap.String("workflow_id", input.WorkflowID),
@@ -1353,9 +1321,7 @@ type S4WorkflowResultOutput struct {
 
 // HandleS4WorkflowResult retrieves the result of a completed S4 analysis workflow
 func (h *Handlers) HandleS4WorkflowResult(ctx context.Context, req *mcp.CallToolRequest, input S4WorkflowResultInput) (*mcp.CallToolResult, S4WorkflowResultOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "s4-workflow-result")
+	log, start := newToolLogger("s4-workflow-result")
 
 	log.Info("Tool execution started",
 		zap.String("workflow_id", input.WorkflowID),

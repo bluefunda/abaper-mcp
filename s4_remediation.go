@@ -405,9 +405,7 @@ func generateMarkdownReport(result S4RemediationResult) string {
 
 // HandleAnalyzeS4Remediation analyzes ABAP code for S/4HANA compatibility issues
 func (h *Handlers) HandleAnalyzeS4Remediation(ctx context.Context, req *mcp.CallToolRequest, input AnalyzeS4RemediationInput) (*mcp.CallToolResult, S4RemediationOutput, error) {
-	requestID := uuid.New().String()[:8]
-	start := time.Now()
-	log := logger.WithTool(requestID, "analyze-s4-remediation")
+	log, start := newToolLogger("analyze-s4-remediation")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
