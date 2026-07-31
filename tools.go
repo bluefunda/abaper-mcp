@@ -405,8 +405,22 @@ func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequ
 		zap.Int("source_len", len(input.SourceCode)),
 	)
 
-	// Idempotency guard: check if object already exists
-	existing, _ := h.apiClient.GetObject(adtType, input.Name, "")
+	// Idempotency guard: check if object already exists. Only a genuine
+	// "not found" is safe to ignore; any other error (network, auth, backend
+	// failure) must abort so we never create based on a transient failure.
+	existing, err := h.apiClient.GetObject(adtType, input.Name, "")
+	if err != nil && !IsNotFound(err) {
+		log.Error("Existence check failed", zap.Error(err))
+		return nil, CreateObjectOutput{
+			Success:     false,
+			Message:     fmt.Sprintf("Could not determine whether %s %s exists: %v", adtType, input.Name, err),
+			Name:        input.Name,
+			ObjectType:  adtType,
+			ErrorCode:   "SAP_ERROR",
+			ErrorDetail: fmt.Sprintf("Existence check failed: %v", err),
+			Errors:      []string{fmt.Sprintf("Existence check failed: %v", err)},
+		}, nil
+	}
 	if existing != nil && existing.Source != "" {
 		err := h.apiClient.UpdateObject(adtType, input.Name, input.SourceCode)
 		if err != nil {
@@ -448,7 +462,7 @@ func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequ
 		pkg = "$TMP"
 	}
 
-	err := h.apiClient.CreateObject(adtType, input.Name, desc, input.SourceCode, pkg)
+	err = h.apiClient.CreateObject(adtType, input.Name, desc, input.SourceCode, pkg)
 	if err != nil {
 		log.Error("Failed to create object", zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return nil, CreateObjectOutput{
@@ -1055,14 +1069,27 @@ func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToo
 	var steps []StepResult
 	existed := false
 
-	// Step 1: Check existence
+	// Step 1: Check existence. Only a genuine "not found" means we should
+	// create; any other error (network, auth, backend failure) must abort so
+	// we never recreate/overwrite based on a transient failure.
 	_, err := h.apiClient.GetObject(adtType, input.ObjectName, "")
-	if err != nil {
-		// Object does not exist — will create
-		steps = append(steps, StepResult{Step: "check_existence", Success: true, Message: "Object does not exist, will create"})
-	} else {
+	switch {
+	case err == nil:
 		existed = true
 		steps = append(steps, StepResult{Step: "check_existence", Success: true, Message: "Object exists, will update"})
+	case IsNotFound(err):
+		steps = append(steps, StepResult{Step: "check_existence", Success: true, Message: "Object does not exist, will create"})
+	default:
+		log.Error("Existence check failed", zap.Error(err), zap.Duration("duration", time.Since(start)))
+		steps = append(steps, StepResult{Step: "check_existence", Success: false, Message: fmt.Sprintf("Existence check failed: %v", err)})
+		return nil, CreateAndActivateOutput{
+			Success:    false,
+			ObjectName: input.ObjectName,
+			ObjectType: input.ObjectType,
+			Action:     "existence_check_failed",
+			Steps:      steps,
+			Message:    fmt.Sprintf("Could not determine whether %s exists: %v", input.ObjectName, err),
+		}, nil
 	}
 
 	// Step 2: Create or update

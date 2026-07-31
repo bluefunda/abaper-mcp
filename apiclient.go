@@ -17,6 +17,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,6 +48,36 @@ type apiResponse struct {
 	Error   string          `json:"error,omitempty"`
 }
 
+// APIError represents a structured error returned by the abaper-ts backend
+// (an HTTP response that parsed cleanly but reported success=false, or a
+// non-2xx status). Transport and decode failures are NOT APIErrors, so callers
+// can distinguish a backend "object not found" from an unreachable backend.
+type APIError struct {
+	Path       string
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API error from %s (status %d): %s", e.Path, e.StatusCode, e.Message)
+}
+
+// IsNotFound reports whether err is a backend APIError indicating the requested
+// object does not exist (HTTP 404, or an error message the backend uses for a
+// missing object). It returns false for transport/auth/parse errors, so callers
+// must not treat those as "not found".
+func IsNotFound(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.StatusCode == http.StatusNotFound {
+		return true
+	}
+	msg := strings.ToLower(apiErr.Message)
+	return strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist")
+}
+
 // post sends a JSON POST request and returns the data field from the response envelope.
 func (c *APIClient) post(path string, body interface{}) (json.RawMessage, error) {
 	jsonBody, err := json.Marshal(body)
@@ -71,7 +102,7 @@ func (c *APIClient) post(path string, body interface{}) (json.RawMessage, error)
 	}
 
 	if !apiResp.Success {
-		return nil, fmt.Errorf("API error from %s: %s", path, apiResp.Error)
+		return nil, &APIError{Path: path, StatusCode: resp.StatusCode, Message: apiResp.Error}
 	}
 
 	return apiResp.Data, nil
