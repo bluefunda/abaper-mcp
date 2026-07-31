@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bluefunda/abaper-mcp/internal/logger"
@@ -101,13 +102,47 @@ type S4RemediationOutput struct {
 	Markdown string              `json:"markdown" jsonschema:"Human-readable Markdown report"`
 }
 
-// loadPatterns loads the embedded remediation patterns
-func loadPatterns() (*S4RemediationPatterns, error) {
+// loadPatterns parses the embedded remediation patterns. The JSON is immutable
+// and compiled into the binary, so it is parsed exactly once and the result is
+// reused across every request.
+var loadPatterns = sync.OnceValues(func() (*S4RemediationPatterns, error) {
 	var patterns S4RemediationPatterns
 	if err := json.Unmarshal(s4RemediationPatternsJSON, &patterns); err != nil {
 		return nil, fmt.Errorf("failed to parse remediation patterns: %w", err)
 	}
 	return &patterns, nil
+})
+
+// selectFromRegex matches an ABAP SELECT ... FROM <table> statement. Compiled
+// once at package load rather than per request.
+var selectFromRegex = regexp.MustCompile(`(?i)SELECT\s+.*\s+FROM\s+\w+`)
+
+// symptomRegexCache memoizes regexes derived from symptom table names so they
+// are compiled once rather than on every analyzeCode invocation.
+var (
+	symptomRegexMu    sync.Mutex
+	symptomRegexCache = map[string]*regexp.Regexp{}
+)
+
+// compileSymptomRegex returns a cached compiled regex for pattern, compiling and
+// caching it on first use. Patterns are built from regexp.QuoteMeta'd table
+// names, so compilation failure is not expected; it is logged rather than
+// silently swallowed.
+func compileSymptomRegex(pattern string) *regexp.Regexp {
+	symptomRegexMu.Lock()
+	defer symptomRegexMu.Unlock()
+
+	if re, ok := symptomRegexCache[pattern]; ok {
+		return re
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		logger.L.Warn("failed to compile symptom regex", zap.String("pattern", pattern), zap.Error(err))
+		symptomRegexCache[pattern] = nil
+		return nil
+	}
+	symptomRegexCache[pattern] = re
+	return re
 }
 
 // getSeverityForCategory returns severity based on category
@@ -158,12 +193,7 @@ func matchesSymptom(upperCode, symptom string) bool {
 	symptomUpper := strings.ToUpper(symptom)
 
 	switch {
-	case strings.Contains(symptomUpper, "USED"):
-		parts := strings.Split(symptomUpper, " ")
-		if len(parts) > 0 {
-			return strings.Contains(upperCode, parts[0])
-		}
-	case strings.Contains(symptomUpper, "REFERENCED"):
+	case strings.Contains(symptomUpper, "USED"), strings.Contains(symptomUpper, "REFERENCED"):
 		parts := strings.Split(symptomUpper, " ")
 		if len(parts) > 0 {
 			return strings.Contains(upperCode, parts[0])
@@ -173,8 +203,9 @@ func matchesSymptom(upperCode, symptom string) bool {
 		if len(parts) > 1 {
 			tableName := strings.TrimSpace(parts[1])
 			pattern := fmt.Sprintf(`SELECT\s+.*\s+FROM\s+%s`, regexp.QuoteMeta(tableName))
-			matched, _ := regexp.MatchString(pattern, upperCode)
-			return matched
+			if re := compileSymptomRegex(pattern); re != nil {
+				return re.MatchString(upperCode)
+			}
 		}
 	case strings.Contains(symptomUpper, "SELECT FROM"):
 		parts := strings.Split(symptomUpper, " FROM ")
@@ -183,8 +214,7 @@ func matchesSymptom(upperCode, symptom string) bool {
 			for _, table := range tables {
 				tableName := strings.TrimSpace(table)
 				pattern := fmt.Sprintf(`SELECT\s+.*\s+FROM\s+%s`, regexp.QuoteMeta(tableName))
-				matched, _ := regexp.MatchString(pattern, upperCode)
-				if matched {
+				if re := compileSymptomRegex(pattern); re != nil && re.MatchString(upperCode) {
 					return true
 				}
 			}
@@ -198,7 +228,6 @@ func matchesSymptom(upperCode, symptom string) bool {
 
 // extractMatchingCode extracts the relevant code snippet that matches the symptom
 func extractMatchingCode(sourceCode, symptom string) string {
-	upperCode := strings.ToUpper(sourceCode)
 	symptomUpper := strings.ToUpper(symptom)
 	lines := strings.Split(sourceCode, "\n")
 
@@ -251,8 +280,7 @@ func extractMatchingCode(sourceCode, symptom string) string {
 	}
 
 	if strings.Contains(symptomUpper, "SELECT") {
-		selectRegex := regexp.MustCompile(`(?i)SELECT\s+.*\s+FROM\s+\w+`)
-		matches := selectRegex.FindAllString(sourceCode, -1)
+		matches := selectFromRegex.FindAllString(sourceCode, -1)
 		for _, match := range matches {
 			if strings.Contains(strings.ToUpper(match), keyword) {
 				if !containsString(matchedLines, strings.TrimSpace(match)) {
@@ -261,8 +289,6 @@ func extractMatchingCode(sourceCode, symptom string) string {
 			}
 		}
 	}
-
-	_ = upperCode // suppress unused variable warning
 
 	if len(matchedLines) == 0 {
 		return "(code pattern detected but specific line not extracted)"
