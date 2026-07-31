@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/bluefunda/abaper-mcp/compare/v0.10.2...v0.10.3) (2026-07-31)
+
+
+### Bug Fixes
+
+* script allowlist + optional SSE auth, coverage, and abaper-ts-&gt;abaper rename ([#69](https://github.com/bluefunda/abaper-mcp/issues/69)) ([7508ac9](https://github.com/bluefunda/abaper-mcp/commit/7508ac9a0fe9ff28f89fb440cad7ca2a8ccea2d3))
+
 ## [0.10.2](https://github.com/bluefunda/abaper-mcp/compare/v0.10.1...v0.10.2) (2026-07-31)
 
 
