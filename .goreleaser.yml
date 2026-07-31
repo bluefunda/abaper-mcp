@@ -267,84 +267,12 @@ nfpms:
         - statically-linked-binary
         - changelog-file-missing-in-native-package
 
-# Docker images - Multi-architecture support
-dockers:
-  # AMD64 images
-  - id: amd64
-    image_templates:
-      - "bluefunda/abaper-mcp:{{ .Version }}-amd64"
-      - "bluefunda/abaper-mcp:latest-amd64"
-    dockerfile: Dockerfile
-    use: buildx
-    extra_files:
-      - go.mod
-      - go.sum
-      - main.go
-      - config.go
-      - handlers.go
-      - tools.go
-      - resources.go
-      - prompts.go
-    build_flag_templates:
-      - "--pull"
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source=https://github.com/bluefunda/abaper-mcp"
-      - "--label=org.opencontainers.image.description=Model Context Protocol server for SAP ABAP development"
-      - "--label=org.opencontainers.image.vendor=BlueFunda, Inc."
-      - "--label=org.opencontainers.image.licenses=Apache-2.0"
-      - "--build-arg=VERSION={{.Version}}"
-      - "--build-arg=BUILD_TIME={{.Date}}"
-      - "--build-arg=GIT_COMMIT={{.FullCommit}}"
-      - "--build-arg=TARGETARCH=amd64"
-    goarch: amd64
-
-  # ARM64 images
-  - id: arm64
-    image_templates:
-      - "bluefunda/abaper-mcp:{{ .Version }}-arm64"
-      - "bluefunda/abaper-mcp:latest-arm64"
-    dockerfile: Dockerfile
-    use: buildx
-    extra_files:
-      - go.mod
-      - go.sum
-      - main.go
-      - config.go
-      - handlers.go
-      - tools.go
-      - resources.go
-      - prompts.go
-    build_flag_templates:
-      - "--pull"
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source=https://github.com/bluefunda/abaper-mcp"
-      - "--label=org.opencontainers.image.description=Model Context Protocol server for SAP ABAP development - ARM64"
-      - "--label=org.opencontainers.image.vendor=BlueFunda, Inc."
-      - "--label=org.opencontainers.image.licenses=Apache-2.0"
-      - "--build-arg=VERSION={{.Version}}"
-      - "--build-arg=BUILD_TIME={{.Date}}"
-      - "--build-arg=GIT_COMMIT={{.FullCommit}}"
-      - "--build-arg=TARGETARCH=arm64"
-    goarch: arm64
-
-# Docker manifests for multi-arch images
-docker_manifests:
-  - name_template: "bluefunda/abaper-mcp:{{ .Version }}"
-    image_templates:
-      - "bluefunda/abaper-mcp:{{ .Version }}-amd64"
-      - "bluefunda/abaper-mcp:{{ .Version }}-arm64"
-  - name_template: "bluefunda/abaper-mcp:latest"
-    image_templates:
-      - "bluefunda/abaper-mcp:latest-amd64"
-      - "bluefunda/abaper-mcp:latest-arm64"
+# NOTE: Docker images are NOT built here. They are built and pushed to
+# ghcr.io/bluefunda/abaper-mcp by the separate `deploy` job in release.yml
+# (release-foundry's docker-deploy.yml, on a Linux runner). GoReleaser's own
+# dockers:/docker_manifests: pipes used to duplicate this — targeting
+# unauthenticated Docker Hub image names with no login step — and hard-failed
+# here because this job runs on macos-latest, which has no Docker daemon/CLI.
 
 # Universal Binary for macOS (combines Intel + Apple Silicon)
 universal_binaries:
