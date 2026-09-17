@@ -37,11 +37,33 @@ func newToolLogger(tool string) (*zap.Logger, time.Time) {
 	return logger.WithTool(requestID, tool), time.Now()
 }
 
-// NewHandlers creates a new handlers instance
+// NewHandlers creates a new handlers instance using the backend's own
+// default/shared SAP identity — stdio mode, and SSE sessions with no
+// connected per-user SAP credentials, both use this.
 func NewHandlers(config *Config) *Handlers {
+	return newHandlersWithAPIClient(config, NewAPIClient(config.BackendURL))
+}
+
+// NewHandlersForSession creates a handlers instance scoped to one SSE
+// session's resolved SAP identity — see serverForSession in main.go for how
+// creds/credsErr/realm/principalToken get decided per session.
+func NewHandlersForSession(config *Config, creds *SAPCredentials, credsErr error, realm, principalToken string) *Handlers {
+	var apiClient *APIClient
+	switch {
+	case credsErr != nil:
+		apiClient = NewAPIClientWithError(config.BackendURL, credsErr)
+	case creds != nil:
+		apiClient = NewAPIClientForUser(config.BackendURL, creds, realm, principalToken)
+	default:
+		apiClient = NewAPIClient(config.BackendURL)
+	}
+	return newHandlersWithAPIClient(config, apiClient)
+}
+
+func newHandlersWithAPIClient(config *Config, apiClient *APIClient) *Handlers {
 	h := &Handlers{
 		config:    config,
-		apiClient: NewAPIClient(config.BackendURL),
+		apiClient: apiClient,
 	}
 	if config.S4TemporalURL != "" {
 		h.s4Client = NewS4Client(config.S4TemporalURL)

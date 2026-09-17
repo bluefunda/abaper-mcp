@@ -25,6 +25,18 @@ type Config struct {
 	// forwarded to the script-executing s4-temporal backend. When empty, the
 	// built-in defaults apply.
 	S4AllowedScripts []string
+
+	// CAIBFFInternalURL is cai-bff's base URL, used to look up a connected
+	// user's own SAP credentials per session (see sapcredentials.go and
+	// bluefunda/abaper-mcp#79). Empty disables per-user credential lookup
+	// entirely — every session then falls back to BackendURL's single,
+	// shared SAP identity, exactly like before this feature existed.
+	CAIBFFInternalURL string
+	// InternalServiceSecret authenticates to cai-bff's internal credential
+	// endpoint (X-Internal-Secret header) — must match cai-bff's own
+	// INTERNAL_SERVICE_SECRET. Required whenever CAIBFFInternalURL is set;
+	// cai-bff rejects the request otherwise.
+	InternalServiceSecret string
 }
 
 // defaultS4AllowedScripts is the built-in allowlist of batch scripts the

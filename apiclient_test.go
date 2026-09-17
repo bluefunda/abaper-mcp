@@ -127,3 +127,68 @@ func TestAPIErrorMessage(t *testing.T) {
 		t.Errorf("APIError.Error() = %q, want %q", got, want)
 	}
 }
+
+// TestAPIClientForUser_AttachesSAPHeaders guards the actual mechanism the
+// per-user SAP connector depends on (bluefunda/abaper-mcp#79): a client built
+// via NewAPIClientForUser must attach the same X-SAP-* headers cai-ios's
+// Code-mode client already sends to this same backend, plus X-Realm and
+// Authorization — confirmed required via a live test against the real
+// backend (X-SAP-* alone got an empty 401 from a gate in front of it).
+func TestAPIClientForUser_AttachesSAPHeaders(t *testing.T) {
+	var gotHost, gotClient, gotUser, gotPassword, gotRealm, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Header.Get("X-SAP-Host")
+		gotClient = r.Header.Get("X-SAP-Client")
+		gotUser = r.Header.Get("X-SAP-User")
+		gotPassword = r.Header.Get("X-SAP-Password")
+		gotRealm = r.Header.Get("X-Realm")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{}}`))
+	}))
+	defer srv.Close()
+
+	client := NewAPIClientForUser(srv.URL, &SAPCredentials{
+		Host:     "https://sap.example.com",
+		Client:   "100",
+		Username: "alice",
+		Password: "hunter2",
+	}, "individual", "the-users-jwt")
+	if _, err := client.post(context.Background(), "/api/v1/system/connect", map[string]string{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotHost != "https://sap.example.com" || gotClient != "100" || gotUser != "alice" || gotPassword != "hunter2" {
+		t.Errorf("X-SAP-* headers = (%q, %q, %q, %q), want the connected user's own credentials", gotHost, gotClient, gotUser, gotPassword)
+	}
+	if gotRealm != "individual" {
+		t.Errorf("X-Realm = %q, want %q", gotRealm, "individual")
+	}
+	if gotAuth != "Bearer the-users-jwt" {
+		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer the-users-jwt")
+	}
+}
+
+// TestAPIClientWithError_NeverMakesARequest guards the "no silent fallback"
+// requirement: a client built with a resolution error must fail every call
+// without ever reaching the shared backend under a different user's identity.
+func TestAPIClientWithError_NeverMakesARequest(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{}}`))
+	}))
+	defer srv.Close()
+
+	wantErr := errors.New("SAP is not connected")
+	client := NewAPIClientWithError(srv.URL, wantErr)
+
+	_, err := client.post(context.Background(), "/api/v1/system/connect", map[string]string{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("post() error = %v, want %v", err, wantErr)
+	}
+	if called {
+		t.Error("post() must not reach the backend at all when credentialsErr is set")
+	}
+}
