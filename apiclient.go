@@ -30,9 +30,34 @@ import (
 type APIClient struct {
 	baseURL    string
 	httpClient *http.Client
+
+	// sapCreds, when set, is attached to every request as X-SAP-* headers —
+	// the same per-request credential mechanism cai-ios's Code-mode client
+	// (CodeAPIService.swift) already uses against this same backend. nil
+	// means "use the backend's own default/shared SAP identity", the
+	// original (and still default) behavior.
+	sapCreds *SAPCredentials
+	// realm accompanies sapCreds as X-Realm — CodeAPIService.swift sends
+	// this alongside the same 4 X-SAP-* headers. Empty when sapCreds is nil.
+	realm string
+	// principalToken, when set, is sent as "Authorization: Bearer <token>" —
+	// the calling user's own Keycloak JWT, forwarded by cai-llm-router (see
+	// mcp.Principal / X-BF-Principal-Token). Confirmed required via a live
+	// local test: identical X-SAP-*/X-Realm headers without it got an empty
+	// 401 from a Cloudflare-fronted gate in front of the real backend,
+	// before the request ever reached the Go handler that owns the SAP
+	// connection logic. Empty when sapCreds is nil.
+	principalToken string
+	// credentialsErr, when set, short-circuits every call with this error
+	// instead of making a request — used when a session's user asked for
+	// their own SAP identity (X-BF-User-Id was present) but cai-bff had none
+	// stored, so this client must NOT silently fall back to the shared
+	// backend identity (see bluefunda/abaper-mcp#79).
+	credentialsErr error
 }
 
-// NewAPIClient creates a new API client for the given base URL.
+// NewAPIClient creates a new API client for the given base URL, using the
+// backend's own default/shared SAP identity (no per-user credentials).
 func NewAPIClient(baseURL string) *APIClient {
 	return &APIClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
@@ -40,6 +65,30 @@ func NewAPIClient(baseURL string) *APIClient {
 			Timeout: 60 * time.Second,
 		},
 	}
+}
+
+// NewAPIClientForUser creates an API client scoped to one user's own SAP
+// credentials — every request carries their host/client/username/password
+// as X-SAP-* headers instead of using the backend's shared default identity.
+// realm is the caller's tenant (X-BF-Realm) and principalToken their own
+// Keycloak JWT (X-BF-Principal-Token, forwarded as Authorization: Bearer) —
+// both from cai-llm-router's forwarded principal, both required by the real
+// backend alongside the SAP credentials themselves.
+func NewAPIClientForUser(baseURL string, creds *SAPCredentials, realm, principalToken string) *APIClient {
+	c := NewAPIClient(baseURL)
+	c.sapCreds = creds
+	c.realm = realm
+	c.principalToken = principalToken
+	return c
+}
+
+// NewAPIClientWithError creates an API client that fails every call with err
+// instead of making a request — used when a session's user explicitly asked
+// for their own SAP identity but none was available (see credentialsErr).
+func NewAPIClientWithError(baseURL string, err error) *APIClient {
+	c := NewAPIClient(baseURL)
+	c.credentialsErr = err
+	return c
 }
 
 // apiResponse is the standard response envelope from abaper.
@@ -81,6 +130,10 @@ func IsNotFound(err error) bool {
 
 // post sends a JSON POST request and returns the data field from the response envelope.
 func (c *APIClient) post(ctx context.Context, path string, body any) (json.RawMessage, error) {
+	if c.credentialsErr != nil {
+		return nil, c.credentialsErr
+	}
+
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -91,6 +144,24 @@ func (c *APIClient) post(ctx context.Context, path string, body any) (json.RawMe
 		return nil, fmt.Errorf("failed to build request to %s: %w", path, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.sapCreds != nil {
+		// Same headers cai-ios's CodeAPIService.swift already sends to this
+		// same backend for Code-mode ADT browsing — this backend already
+		// accepts per-request SAP identity, no backend-side change needed.
+		// X-Realm and Authorization are both required alongside the SAP
+		// headers — confirmed via a live test: X-SAP-* headers alone got an
+		// empty 401 from a gate in front of the real backend.
+		if c.realm != "" {
+			req.Header.Set("X-Realm", c.realm)
+		}
+		if c.principalToken != "" {
+			req.Header.Set("Authorization", "Bearer "+c.principalToken)
+		}
+		req.Header.Set("X-SAP-Host", c.sapCreds.Host)
+		req.Header.Set("X-SAP-Client", c.sapCreds.Client)
+		req.Header.Set("X-SAP-User", c.sapCreds.Username)
+		req.Header.Set("X-SAP-Password", c.sapCreds.Password)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
