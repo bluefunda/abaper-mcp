@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/bluefunda/abaper-mcp/compare/v0.10.5...v0.11.0) (2026-09-17)
+
+
+### Features
+
+* resolve per-user SAP credentials from cai-bff, per SSE session ([#80](https://github.com/bluefunda/abaper-mcp/issues/80)) ([534fc00](https://github.com/bluefunda/abaper-mcp/commit/534fc007a9ff7165e5ad8231e01dac2eaf8d0c7c))
+
 ## [0.10.5](https://github.com/bluefunda/abaper-mcp/compare/v0.10.4...v0.10.5) (2026-07-31)
 
 
