@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	go.uber.org/zap v1.28.0
 )
 
