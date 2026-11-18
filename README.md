@@ -73,6 +73,7 @@ Set via `ABAPER_MODE` env var:
 | `ABAPER_TS_URL` | No | — | Deprecated alias for `ABAPER_BACKEND_URL` (still honored if `ABAPER_BACKEND_URL` is unset) |
 | `ABAPER_MODE` | No | `stdio` | `stdio` or `sse` |
 | `ABAPER_AUTH_TOKEN` | No | — | If set, SSE requests require `Authorization: Bearer <token>` (`/health` stays public) |
+| `ABAPER_REQUIRE_PRINCIPAL` | No | `false` | If `true`, SSE requests without a forwarded principal (`X-BF-User-Id` + `X-BF-Realm` from cai-llm-router) get 401. Every tool call is logged with the principal either way. |
 | `S4_TEMPORAL_URL` | No | — | s4-temporal API URL; enables the `s4-*` batch tools when set |
 | `S4_ALLOWED_SCRIPTS` | No | `minio-batch-all.sh,minio-batch-folder.sh,minio-batch-xml.sh` | Comma-separated allowlist of batch scripts `s4-batch-analyze` may run |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |

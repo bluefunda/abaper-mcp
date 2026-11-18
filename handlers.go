@@ -27,14 +27,17 @@ type Handlers struct {
 	config    *Config
 	apiClient *APIClient
 	s4Client  *S4Client
+	// principal is the session's forwarded end user, for audit attribution.
+	principal principal
 }
 
 // newToolLogger starts a scoped logger for a single tool invocation, tagged
-// with a short request ID, and returns the invocation start time for
+// with a short request ID and the session's principal (user, realm,
+// correlation ID — never the token), and returns the invocation start time for
 // duration logging.
-func newToolLogger(tool string) (*zap.Logger, time.Time) {
+func (h *Handlers) newToolLogger(tool string) (*zap.Logger, time.Time) {
 	requestID := uuid.New().String()[:8]
-	return logger.WithTool(requestID, tool), time.Now()
+	return logger.WithTool(requestID, tool).With(h.principal.fields()...), time.Now()
 }
 
 // NewHandlers creates a new handlers instance using the backend's own

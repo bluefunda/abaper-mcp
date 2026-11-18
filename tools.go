@@ -136,7 +136,7 @@ type GetObjectOutput struct {
 
 // HandleGetObject retrieves ABAP object source code via abaper
 func (h *Handlers) HandleGetObject(ctx context.Context, req *mcp.CallToolRequest, input GetObjectInput) (*mcp.CallToolResult, GetObjectOutput, error) {
-	log, start := newToolLogger("get-object")
+	log, start := h.newToolLogger("get-object")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -201,7 +201,7 @@ type ObjectInfo struct {
 
 // HandleSearchObjects searches for ABAP objects via abaper
 func (h *Handlers) HandleSearchObjects(ctx context.Context, req *mcp.CallToolRequest, input SearchObjectsInput) (*mcp.CallToolResult, SearchObjectsOutput, error) {
-	log, start := newToolLogger("search-objects")
+	log, start := h.newToolLogger("search-objects")
 
 	log.Info("Tool execution started",
 		zap.String("pattern", input.Pattern),
@@ -254,7 +254,7 @@ type PackageInfo struct {
 
 // HandleListPackages lists ABAP packages via abaper
 func (h *Handlers) HandleListPackages(ctx context.Context, req *mcp.CallToolRequest, input ListPackagesInput) (*mcp.CallToolResult, ListPackagesOutput, error) {
-	log, start := newToolLogger("list-packages")
+	log, start := h.newToolLogger("list-packages")
 
 	log.Info("Tool execution started")
 
@@ -293,7 +293,7 @@ type TestConnectionOutput struct {
 
 // HandleTestConnection tests ADT connection via abaper
 func (h *Handlers) HandleTestConnection(ctx context.Context, req *mcp.CallToolRequest, input TestConnectionInput) (*mcp.CallToolResult, TestConnectionOutput, error) {
-	log, start := newToolLogger("test-connection")
+	log, start := h.newToolLogger("test-connection")
 
 	log.Info("Tool execution started")
 
@@ -400,7 +400,7 @@ var unitTestableTypes = map[string]bool{
 // HandleCreateObject creates any supported ABAP object type via abaper.
 // If the object already exists, it is updated instead (idempotent).
 func (h *Handlers) HandleCreateObject(ctx context.Context, req *mcp.CallToolRequest, input CreateObjectInput) (*mcp.CallToolResult, CreateObjectOutput, error) {
-	log, start := newToolLogger("create-object")
+	log, start := h.newToolLogger("create-object")
 
 	objectType := strings.ToLower(input.ObjectType)
 	if !creatableTypes[objectType] {
@@ -529,7 +529,7 @@ type UpdateObjectOutput struct {
 
 // HandleUpdateObject updates any supported ABAP object type via abaper.
 func (h *Handlers) HandleUpdateObject(ctx context.Context, req *mcp.CallToolRequest, input UpdateObjectInput) (*mcp.CallToolResult, UpdateObjectOutput, error) {
-	log, start := newToolLogger("update-object")
+	log, start := h.newToolLogger("update-object")
 
 	objectType := strings.ToLower(input.ObjectType)
 	if !creatableTypes[objectType] {
@@ -599,7 +599,7 @@ type ActivateObjectOutput struct {
 
 // HandleActivateObject activates an ABAP object via abaper
 func (h *Handlers) HandleActivateObject(ctx context.Context, req *mcp.CallToolRequest, input ActivateObjectInput) (*mcp.CallToolResult, ActivateObjectOutput, error) {
-	log, start := newToolLogger("activate-object")
+	log, start := h.newToolLogger("activate-object")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -691,7 +691,7 @@ type RunUnitTestsOutput struct {
 
 // HandleRunUnitTests runs ABAP unit tests via abaper
 func (h *Handlers) HandleRunUnitTests(ctx context.Context, req *mcp.CallToolRequest, input RunUnitTestsInput) (*mcp.CallToolResult, RunUnitTestsOutput, error) {
-	log, start := newToolLogger("run-unit-tests")
+	log, start := h.newToolLogger("run-unit-tests")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -778,7 +778,7 @@ type SyntaxCheckOutput struct {
 
 // HandleSyntaxCheck performs syntax check via abaper
 func (h *Handlers) HandleSyntaxCheck(ctx context.Context, req *mcp.CallToolRequest, input SyntaxCheckInput) (*mcp.CallToolResult, SyntaxCheckOutput, error) {
-	log, start := newToolLogger("syntax-check")
+	log, start := h.newToolLogger("syntax-check")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -849,7 +849,7 @@ type FormatCodeOutput struct {
 
 // HandleFormatCode formats ABAP source code via abaper
 func (h *Handlers) HandleFormatCode(ctx context.Context, req *mcp.CallToolRequest, input FormatCodeInput) (*mcp.CallToolResult, FormatCodeOutput, error) {
-	log, start := newToolLogger("format-code")
+	log, start := h.newToolLogger("format-code")
 
 	log.Info("Tool execution started",
 		zap.Int("source_len", len(input.SourceCode)),
@@ -893,7 +893,7 @@ type TransportInfoOutput struct {
 
 // HandleTransportInfo retrieves transport info via abaper
 func (h *Handlers) HandleTransportInfo(ctx context.Context, req *mcp.CallToolRequest, input TransportInfoInput) (*mcp.CallToolResult, TransportInfoOutput, error) {
-	log, start := newToolLogger("transport-info")
+	log, start := h.newToolLogger("transport-info")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -951,7 +951,7 @@ type CreateTransportOutput struct {
 
 // HandleCreateTransport creates a transport request via abaper
 func (h *Handlers) HandleCreateTransport(ctx context.Context, req *mcp.CallToolRequest, input CreateTransportInput) (*mcp.CallToolResult, CreateTransportOutput, error) {
-	log, start := newToolLogger("create-transport")
+	log, start := h.newToolLogger("create-transport")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -1033,7 +1033,7 @@ type CreateAndActivateOutput struct {
 
 // HandleCreateAndActivate checks existence, creates or updates, and activates in one call
 func (h *Handlers) HandleCreateAndActivate(ctx context.Context, req *mcp.CallToolRequest, input CreateAndActivateInput) (*mcp.CallToolResult, CreateAndActivateOutput, error) {
-	log, start := newToolLogger("create-and-activate")
+	log, start := h.newToolLogger("create-and-activate")
 
 	log.Info("Tool execution started",
 		zap.String("object_type", input.ObjectType),
@@ -1219,7 +1219,7 @@ type S4BatchAnalyzeOutput struct {
 
 // HandleS4BatchAnalyze triggers a batch S/4HANA analysis via s4-temporal
 func (h *Handlers) HandleS4BatchAnalyze(ctx context.Context, req *mcp.CallToolRequest, input S4BatchAnalyzeInput) (*mcp.CallToolResult, S4BatchAnalyzeOutput, error) {
-	log, start := newToolLogger("s4-batch-analyze")
+	log, start := h.newToolLogger("s4-batch-analyze")
 
 	log.Info("Tool execution started",
 		zap.String("script", input.Script),
@@ -1278,7 +1278,7 @@ type S4WorkflowStatusOutput struct {
 
 // HandleS4WorkflowStatus checks the status of an S4 analysis workflow
 func (h *Handlers) HandleS4WorkflowStatus(ctx context.Context, req *mcp.CallToolRequest, input S4WorkflowStatusInput) (*mcp.CallToolResult, S4WorkflowStatusOutput, error) {
-	log, start := newToolLogger("s4-workflow-status")
+	log, start := h.newToolLogger("s4-workflow-status")
 
 	log.Info("Tool execution started",
 		zap.String("workflow_id", input.WorkflowID),
@@ -1321,7 +1321,7 @@ type S4WorkflowResultOutput struct {
 
 // HandleS4WorkflowResult retrieves the result of a completed S4 analysis workflow
 func (h *Handlers) HandleS4WorkflowResult(ctx context.Context, req *mcp.CallToolRequest, input S4WorkflowResultInput) (*mcp.CallToolResult, S4WorkflowResultOutput, error) {
-	log, start := newToolLogger("s4-workflow-result")
+	log, start := h.newToolLogger("s4-workflow-result")
 
 	log.Info("Tool execution started",
 		zap.String("workflow_id", input.WorkflowID),

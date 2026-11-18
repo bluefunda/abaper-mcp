@@ -70,6 +70,7 @@ func main() {
 		S4AllowedScripts:      splitAndTrim(getEnv("S4_ALLOWED_SCRIPTS", "")),
 		CAIBFFInternalURL:     getEnv("CAI_BFF_INTERNAL_URL", ""),
 		InternalServiceSecret: getEnv("INTERNAL_SERVICE_SECRET", ""),
+		RequirePrincipal:      getEnv("ABAPER_REQUIRE_PRINCIPAL", "false") == "true",
 	}
 
 	if err := config.Validate(); err != nil {
@@ -162,6 +163,15 @@ func runSSEMode(ctx context.Context, config *Config) {
 		})
 	}
 
+	// Optional principal requirement (bluefunda/abaper-mcp#77). Off by default
+	// so nothing breaks while callers roll out principal forwarding. Wrapped
+	// inside bearerAuth below, so an unauthenticated request never learns
+	// which headers are missing.
+	if config.RequirePrincipal {
+		logger.L.Info("MCP requests without a forwarded principal will be rejected (ABAPER_REQUIRE_PRINCIPAL)")
+		handler = requirePrincipal(handler)
+	}
+
 	mux := http.NewServeMux()
 	// Optional bearer-token auth for the MCP endpoint. /health is registered
 	// separately below and stays public for liveness probes.
@@ -217,23 +227,6 @@ func runSSEMode(ctx context.Context, config *Config) {
 	}
 }
 
-// headerPrincipalUserID, headerPrincipalRealm and headerPrincipalToken mirror
-// cai-llm-router's internal/mcp/principal.go Header* constants — duplicated
-// (not imported) since that's an internal/ package of a different module and
-// these are the wire contract abaper-mcp receives, not sends. Changing any of
-// these silently stops per-user SAP resolution from working; treat them as
-// frozen.
-const (
-	headerPrincipalUserID = "X-BF-User-Id"
-	headerPrincipalRealm  = "X-BF-Realm"
-	// headerPrincipalToken carries the calling user's own Keycloak JWT —
-	// forwarded to the real abaper backend as "Authorization: Bearer
-	// <token>", required alongside X-Realm/X-SAP-* (confirmed via a live
-	// test: those alone got an empty 401 from a gate in front of the real
-	// backend).
-	headerPrincipalToken = "X-BF-Principal-Token"
-)
-
 // serverForSession builds a fresh *mcp.Server + Handlers for one SSE/HTTP
 // session, resolving that session's SAP identity from the connecting
 // request's forwarded principal (see bluefunda/abaper-mcp#79). cai-llm-router
@@ -258,9 +251,15 @@ const (
 func serverForSession(req *http.Request, config *Config) *mcp.Server {
 	server := newServer()
 
+	// Every tool call in this session is attributed to this principal
+	// (Handlers.newToolLogger), so it is logged once here as well.
+	p := principalFromRequest(req)
+	logger.L.Info("MCP session principal", p.fields()...)
+
 	userID := req.Header.Get(headerPrincipalUserID)
 	if userID == "" || config.CAIBFFInternalURL == "" {
 		handlers := NewHandlers(config)
+		handlers.principal = p
 		registerTools(server, handlers)
 		registerResources(server, handlers)
 		registerPrompts(server, handlers)
@@ -287,6 +286,7 @@ func serverForSession(req *http.Request, config *Config) *mcp.Server {
 		handlers = NewHandlersForSession(config, nil, fmt.Errorf("failed to resolve your SAP connection, please try again: %w", err), realm, principalToken)
 	}
 
+	handlers.principal = p
 	registerTools(server, handlers)
 	registerResources(server, handlers)
 	registerPrompts(server, handlers)

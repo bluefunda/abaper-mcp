@@ -37,6 +37,11 @@ type Config struct {
 	// INTERNAL_SERVICE_SECRET. Required whenever CAIBFFInternalURL is set;
 	// cai-bff rejects the request otherwise.
 	InternalServiceSecret string
+
+	// RequirePrincipal rejects SSE/HTTP requests that carry no forwarded
+	// principal (X-BF-User-Id + X-BF-Realm). Off by default
+	// (ABAPER_REQUIRE_PRINCIPAL) — see principal.go.
+	RequirePrincipal bool
 }
 
 // defaultS4AllowedScripts is the built-in allowlist of batch scripts the
