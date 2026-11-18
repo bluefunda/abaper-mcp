@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/bluefunda/abaper-mcp/compare/v0.11.0...v0.12.0) (2026-11-18)
+
+
+### Features
+
+* **audit:** attribute every tool call to the forwarded principal ([#82](https://github.com/bluefunda/abaper-mcp/issues/82)) ([46332bb](https://github.com/bluefunda/abaper-mcp/commit/46332bb711e062b15699a050db89982948d7628a))
+
 ## [0.11.0](https://github.com/bluefunda/abaper-mcp/compare/v0.10.5...v0.11.0) (2026-09-17)
 
 
