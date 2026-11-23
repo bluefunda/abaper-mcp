@@ -70,17 +70,20 @@ func main() {
 		S4AllowedScripts:      splitAndTrim(getEnv("S4_ALLOWED_SCRIPTS", "")),
 		CAIBFFInternalURL:     getEnv("CAI_BFF_INTERNAL_URL", ""),
 		InternalServiceSecret: getEnv("INTERNAL_SERVICE_SECRET", ""),
-		RequirePrincipal:      getEnv("ABAPER_REQUIRE_PRINCIPAL", "false") == "true",
+		RequirePrincipal:      getEnv("ABAPER_REQUIRE_PRINCIPAL", "true") != "false",
 	}
 
 	if err := config.Validate(); err != nil {
 		logger.L.Fatal("Invalid configuration", zap.Error(err))
 	}
+	if err := config.ValidateForMode(mode); err != nil {
+		logger.L.Fatal("Invalid configuration for mode", zap.String("mode", mode), zap.Error(err))
+	}
 
 	logger.L.Info("Configuration loaded",
 		zap.String("backend_url", config.BackendURL),
 		zap.String("s4_temporal_url", config.S4TemporalURL),
-		zap.Bool("per_user_sap_credentials_enabled", config.CAIBFFInternalURL != ""),
+		zap.Bool("require_principal", config.RequirePrincipal),
 	)
 
 	// Cancel the root context on SIGINT/SIGTERM so both transports can shut
@@ -89,13 +92,14 @@ func main() {
 	defer stop()
 
 	switch mode {
-	case "sse":
+	case modeSSE:
 		runSSEMode(ctx, config)
-	default: // stdio
-		// stdio is always a single local process talking to one Claude
-		// Desktop/Code instance — there is no per-request principal to
-		// resolve per-user SAP credentials from, so this always uses the
-		// backend's shared/default SAP identity (config.BackendURL).
+	default: // modeStdio (ValidateForMode rejected anything else)
+		// stdio is a single local process talking to one Claude Desktop/Code
+		// instance over stdin/stdout; it never listens on the network. There
+		// is no per-request principal, so it sends no SAP identity: point
+		// ABAPER_BACKEND_URL at a backend you run yourself with your own SAP
+		// credentials (abaper serve --allow-static-sap).
 		server := newServer()
 		handlers := NewHandlers(config)
 		registerTools(server, handlers)
@@ -163,13 +167,15 @@ func runSSEMode(ctx context.Context, config *Config) {
 		})
 	}
 
-	// Optional principal requirement (bluefunda/abaper-mcp#77). Off by default
-	// so nothing breaks while callers roll out principal forwarding. Wrapped
+	// Principal requirement (bluefunda/abaper-mcp#77), on by default. Wrapped
 	// inside bearerAuth below, so an unauthenticated request never learns
-	// which headers are missing.
+	// which headers are missing. With it off, a session without a principal
+	// still gets no SAP access: serverForSession fails its tool calls.
 	if config.RequirePrincipal {
 		logger.L.Info("MCP requests without a forwarded principal will be rejected (ABAPER_REQUIRE_PRINCIPAL)")
 		handler = requirePrincipal(handler)
+	} else {
+		logger.L.Warn("ABAPER_REQUIRE_PRINCIPAL=false: requests without a principal are accepted, but their SAP tool calls fail")
 	}
 
 	mux := http.NewServeMux()
@@ -235,62 +241,66 @@ func runSSEMode(ctx context.Context, config *Config) {
 // so the request that establishes this session reliably belongs to one user
 // for the session's whole lifetime, and resolving once here (rather than per
 // tool call) is correct, not just a convenient shortcut.
-//
-// Three outcomes:
-//   - No X-BF-User-Id header, or per-user lookup not configured at all
-//     (CAIBFFInternalURL empty): falls back to the shared/default SAP
-//     identity — identical to this feature not existing, e.g. stdio-style
-//     callers or any deployment that hasn't enabled it.
-//   - X-BF-User-Id present and cai-bff has stored credentials: every backend
-//     call in this session uses that user's own SAP system.
-//   - X-BF-User-Id present but no credentials found (or the lookup itself
-//     failed): every backend call in this session fails with a clear error
-//     instead of silently using the shared identity — a user who explicitly
-//     has their own SAP connection expected must never have their prompt
-//     answered against the wrong, unrelated SAP system.
 func serverForSession(req *http.Request, config *Config) *mcp.Server {
 	server := newServer()
+	handlers := handlersForSession(req, config)
+	registerTools(server, handlers)
+	registerResources(server, handlers)
+	registerPrompts(server, handlers)
+	return server
+}
 
+// errNoSignedInUser is the tool error for a session with no forwarded user.
+var errNoSignedInUser = errors.New("no signed-in user on this request: sign in and connect SAP in Settings to use SAP tools")
+
+// handlersForSession resolves one SSE session's SAP identity. SAP
+// credentials are per user only; there is no shared identity in server mode:
+//   - X-BF-User-Id present and cai-bff has stored credentials: every backend
+//     call in this session uses that user's own SAP system.
+//   - No X-BF-User-Id (or, defensively, no cai-bff configured): every call
+//     fails with a "sign in and connect SAP" error.
+//   - X-BF-User-Id present but no credentials found, or the lookup itself
+//     failed: every call fails with a clear error.
+func handlersForSession(req *http.Request, config *Config) *Handlers {
 	// Every tool call in this session is attributed to this principal
 	// (Handlers.newToolLogger), so it is logged once here as well.
 	p := principalFromRequest(req)
 	logger.L.Info("MCP session principal", p.fields()...)
 
 	userID := req.Header.Get(headerPrincipalUserID)
-	if userID == "" || config.CAIBFFInternalURL == "" {
-		handlers := NewHandlers(config)
-		handlers.principal = p
-		registerTools(server, handlers)
-		registerResources(server, handlers)
-		registerPrompts(server, handlers)
-		return server
-	}
-
 	realm := req.Header.Get(headerPrincipalRealm)
 	principalToken := req.Header.Get(headerPrincipalToken)
 
-	creds, err := fetchSAPCredentials(req.Context(), config.CAIBFFInternalURL, config.InternalServiceSecret, userID)
 	var handlers *Handlers
 	switch {
-	case err == nil:
-		logger.L.Debug("resolved per-user SAP credentials for session",
-			zap.String("userID", userID),
-			zap.Bool("principal_token_present", principalToken != ""),
-		)
-		handlers = NewHandlersForSession(config, creds, nil, realm, principalToken)
-	case errors.Is(err, ErrSAPNotConnected):
-		logger.L.Info("session's user has not connected SAP", zap.String("userID", userID))
-		handlers = NewHandlersForSession(config, nil, fmt.Errorf("SAP is not connected — connect it in Settings → Agents first"), realm, principalToken)
+	case userID == "":
+		logger.L.Info("MCP session has no forwarded user; SAP tools will fail")
+		handlers = NewHandlersForSession(config, nil, errNoSignedInUser, realm, principalToken)
+	case config.CAIBFFInternalURL == "":
+		// ValidateForMode refuses to start SSE mode like this; never fall
+		// back to a shared identity if it is reached anyway.
+		logger.L.Error("per-user SAP credential lookup is not configured (CAI_BFF_INTERNAL_URL)")
+		handlers = NewHandlersForSession(config, nil, errors.New("SAP credential lookup is not configured on this server"), realm, principalToken)
 	default:
-		logger.L.Error("sap credentials lookup failed", zap.String("userID", userID), zap.Error(err))
-		handlers = NewHandlersForSession(config, nil, fmt.Errorf("failed to resolve your SAP connection, please try again: %w", err), realm, principalToken)
+		creds, err := fetchSAPCredentials(req.Context(), config.CAIBFFInternalURL, config.InternalServiceSecret, userID)
+		switch {
+		case err == nil:
+			logger.L.Debug("resolved per-user SAP credentials for session",
+				zap.String("userID", userID),
+				zap.Bool("principal_token_present", principalToken != ""),
+			)
+			handlers = NewHandlersForSession(config, creds, nil, realm, principalToken)
+		case errors.Is(err, ErrSAPNotConnected):
+			logger.L.Info("session's user has not connected SAP", zap.String("userID", userID))
+			handlers = NewHandlersForSession(config, nil, fmt.Errorf("SAP is not connected — connect it in Settings → Agents first"), realm, principalToken)
+		default:
+			logger.L.Error("sap credentials lookup failed", zap.String("userID", userID), zap.Error(err))
+			handlers = NewHandlersForSession(config, nil, fmt.Errorf("failed to resolve your SAP connection, please try again: %w", err), realm, principalToken)
+		}
 	}
 
 	handlers.principal = p
-	registerTools(server, handlers)
-	registerResources(server, handlers)
-	registerPrompts(server, handlers)
-	return server
+	return handlers
 }
 
 func getEnv(key, defaultValue string) string {

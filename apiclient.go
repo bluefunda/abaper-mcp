@@ -34,8 +34,9 @@ type APIClient struct {
 	// sapCreds, when set, is attached to every request as X-SAP-* headers —
 	// the same per-request credential mechanism cai-ios's Code-mode client
 	// (CodeAPIService.swift) already uses against this same backend. nil
-	// means "use the backend's own default/shared SAP identity", the
-	// original (and still default) behavior.
+	// sends no SAP identity: only valid in stdio mode, against a local
+	// backend the user runs with their own credentials. In SSE mode every
+	// session has either sapCreds or credentialsErr set (serverForSession).
 	sapCreds *SAPCredentials
 	// realm accompanies sapCreds as X-Realm — CodeAPIService.swift sends
 	// this alongside the same 4 X-SAP-* headers. Empty when sapCreds is nil.
@@ -49,15 +50,15 @@ type APIClient struct {
 	// connection logic. Empty when sapCreds is nil.
 	principalToken string
 	// credentialsErr, when set, short-circuits every call with this error
-	// instead of making a request — used when a session's user asked for
-	// their own SAP identity (X-BF-User-Id was present) but cai-bff had none
-	// stored, so this client must NOT silently fall back to the shared
-	// backend identity (see bluefunda/abaper-mcp#79).
+	// instead of making a request — used when an SSE session has no signed-in
+	// user, or cai-bff has no stored SAP credentials for them, so this client
+	// must never fall back to a shared backend identity.
 	credentialsErr error
 }
 
-// NewAPIClient creates a new API client for the given base URL, using the
-// backend's own default/shared SAP identity (no per-user credentials).
+// NewAPIClient creates a new API client for the given base URL that sends no
+// SAP identity headers. Only stdio mode uses it, against the user's own local
+// backend; SSE sessions use NewAPIClientForUser or NewAPIClientWithError.
 func NewAPIClient(baseURL string) *APIClient {
 	return &APIClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
@@ -128,17 +129,14 @@ func IsNotFound(err error) bool {
 	return strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist")
 }
 
-// post sends a JSON POST request and returns the data field from the response envelope.
-func (c *APIClient) post(ctx context.Context, path string, body any) (json.RawMessage, error) {
+// newRequest builds a JSON POST to the backend carrying this client's SAP
+// identity. Every backend call must go through here, so no call path can skip
+// the per-user X-SAP-* headers (or reach the backend at all when
+// credentialsErr is set).
+func (c *APIClient) newRequest(ctx context.Context, path string, jsonBody []byte) (*http.Request, error) {
 	if c.credentialsErr != nil {
 		return nil, c.credentialsErr
 	}
-
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build request to %s: %w", path, err)
@@ -161,6 +159,24 @@ func (c *APIClient) post(ctx context.Context, path string, body any) (json.RawMe
 		req.Header.Set("X-SAP-Client", c.sapCreds.Client)
 		req.Header.Set("X-SAP-User", c.sapCreds.Username)
 		req.Header.Set("X-SAP-Password", c.sapCreds.Password)
+	}
+	return req, nil
+}
+
+// post sends a JSON POST request and returns the data field from the response envelope.
+func (c *APIClient) post(ctx context.Context, path string, body any) (json.RawMessage, error) {
+	if c.credentialsErr != nil {
+		return nil, c.credentialsErr
+	}
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := c.newRequest(ctx, path, jsonBody)
+	if err != nil {
+		return nil, err
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -440,11 +456,10 @@ func (c *APIClient) Activate(ctx context.Context, objectType, objectName string)
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/activate", bytes.NewReader(jsonBody))
+	req, err := c.newRequest(ctx, "/api/v1/activate", jsonBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build request to /api/v1/activate: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

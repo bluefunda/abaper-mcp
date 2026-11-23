@@ -108,15 +108,14 @@ Pre-configured analysis workflows:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ABAPER_BACKEND_URL` | URL of abaper REST API | `http://localhost:8080` |
-| `ABAPER_MODE` | Operational mode (stdio/sse/nats/dual) | `stdio` |
+| `ABAPER_MODE` | Operational mode (`stdio` or `sse`; anything else is refused) | `stdio` |
+| `CAI_BFF_INTERNAL_URL` | cai-bff URL for per-user SAP credentials (required in sse, refused in stdio) | — |
+| `INTERNAL_SERVICE_SECRET` | Secret for cai-bff's internal endpoint (required in sse, refused in stdio) | — |
+| `ABAPER_REQUIRE_PRINCIPAL` | 401 for SSE requests without `X-BF-User-Id`/`X-BF-Realm` | `true` |
 | `ABAPER_HTTP_PORT` | SSE mode listen port | `8015` |
 | `ABAPER_HTTP_HOST` | SSE mode listen host | `0.0.0.0` |
 | `LOG_LEVEL` | Log level (debug/info/warn/error) | `info` |
 | `LOG_FORMAT` | Log format (json/console) | `json` |
-| `NATS_URL` | NATS server URL (for nats/dual mode) | — |
-| `NATS_CREDS` | NATS credentials file path | — |
-| `VAULT_ADDR` | HashiCorp Vault address (optional) | — |
-| `VAULT_TOKEN` | Vault token (optional) | — |
 
 ## Deployment (Production)
 
@@ -126,7 +125,13 @@ In the ABAPer platform, abaper-mcp runs in **SSE mode** as a Docker container:
 Container: abaper-mcp (:8015)
   ABAPER_MODE=sse
   ABAPER_BACKEND_URL=http://abaper:8080
+  CAI_BFF_INTERNAL_URL=http://cai-bff:8080
+  INTERNAL_SERVICE_SECRET=<secret>
 ```
+
+SAP credentials are per user only: each session's user (`X-BF-User-Id`) has their own SAP credentials fetched
+from cai-bff and sent to abaper as `X-SAP-*` headers. There is no shared SAP login; a session without a user, or
+whose user has not connected SAP, gets a tool error.
 
 The cai-llm-router connects to it via `http://abaper-mcp:8015/sse` as an MCP server.
 

@@ -6,6 +6,9 @@ services:
     environment:
       ABAPER_MODE: sse
       ABAPER_BACKEND_URL: http://abaper:8080
+      # Per-user SAP credentials from cai-bff; required in sse mode (no shared SAP login).
+      CAI_BFF_INTERNAL_URL: http://cai-bff:8080
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET}
       LOG_LEVEL: info
       LOG_FORMAT: json
     restart: unless-stopped

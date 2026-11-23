@@ -19,6 +19,10 @@ make lint     # Lint
 
 Set via `ABAPER_MODE`: `stdio` (default, Claude Desktop / Claude Code), `sse` (HTTP/SSE on :8015).
 
+SAP credentials are per user. `sse` mode requires `CAI_BFF_INTERNAL_URL` + `INTERNAL_SERVICE_SECRET`, resolves each
+session's user's own SAP credentials (`handlersForSession` in `main.go`) and fails closed without them; never add a
+shared SAP identity. stdio is local single-user and sends no SAP identity.
+
 ## Architecture
 
 Everything is `package main` except `internal/logger`. Do not introduce new packages.

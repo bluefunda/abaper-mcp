@@ -2,6 +2,11 @@
 
 This guide explains how to configure the ABAPER MCP server with Claude Desktop.
 
+Claude Desktop runs abaper-mcp in **stdio mode**: a local process for you alone that never listens on the
+network. abaper-mcp itself holds no SAP credentials and never reads `SAP_*` variables. It talks to an abaper
+backend that you run on your own machine with **your own** SAP credentials. (The hosted server mode is
+different: there every user's credentials are looked up per user, and no shared SAP login is allowed.)
+
 ## Prerequisites
 
 1. Build the ABAPER MCP server:
@@ -16,11 +21,15 @@ This guide explains how to configure the ABAPER MCP server with Claude Desktop.
    # Output: /Users/phani/Downloads/src/abaper-mcp
    ```
 
-3. Have your SAP system credentials ready:
-   - SAP Host (including protocol and port, e.g., `https://sapdev.company.com:8000`)
-   - SAP Client (typically `100`)
-   - SAP Username
-   - SAP Password
+3. Install the `abaper` CLI and add your own SAP system (stored in `~/.abaper/systems.json`, mode 0600):
+   ```bash
+   abaper system add        # host incl. protocol and port, client, your username and password
+   ```
+
+4. Start a local backend with your own SAP identity (listens on `127.0.0.1:8080` only):
+   ```bash
+   abaper serve --allow-static-sap
+   ```
 
 ## Configuration Steps
 
@@ -55,10 +64,7 @@ Add the ABAPER MCP server configuration:
     "abaper": {
       "command": "/absolute/path/to/abaper-mcp",
       "env": {
-        "SAP_HOST": "https://your-sap-host:8000",
-        "SAP_CLIENT": "100",
-        "SAP_USERNAME": "your-username",
-        "SAP_PASSWORD": "your-password"
+        "ABAPER_BACKEND_URL": "http://localhost:8080"
       }
     }
   }
@@ -67,7 +73,8 @@ Add the ABAPER MCP server configuration:
 
 **Important:**
 - Replace `/absolute/path/to/abaper-mcp` with the actual absolute path to your binary
-- Replace the SAP credentials with your actual values
+- `ABAPER_BACKEND_URL` points at the `abaper serve --allow-static-sap` you started; your SAP credentials stay
+  in `~/.abaper/systems.json`, not in this file
 - The `command` path must be absolute, not relative
 
 ### Example Configuration
@@ -78,10 +85,7 @@ Add the ABAPER MCP server configuration:
     "abaper": {
       "command": "/Users/phani/Downloads/src/abaper-mcp/abaper-mcp",
       "env": {
-        "SAP_HOST": "https://sapdev.mycompany.com:8000",
-        "SAP_CLIENT": "100",
-        "SAP_USERNAME": "DEVELOPER01",
-        "SAP_PASSWORD": "MySecurePassword123"
+        "ABAPER_BACKEND_URL": "http://localhost:8080"
       }
     }
   }
@@ -198,10 +202,11 @@ Available prompts:
 
 ### Connection Issues
 
-1. **Verify SAP credentials**: Test credentials using SAP GUI first
-2. **Check network**: Ensure you can reach the SAP host
-3. **Check ADT enabled**: Verify ADT services are enabled on your SAP system
-4. **Check client**: Ensure the SAP client number is correct
+1. **Check the local backend**: `abaper serve --allow-static-sap` must be running (`curl http://localhost:8080/health`)
+2. **Verify SAP credentials**: Test your own credentials using SAP GUI first
+3. **Check network**: Ensure you can reach the SAP host
+4. **Check ADT enabled**: Verify ADT services are enabled on your SAP system
+5. **Check client**: Ensure the SAP client number is correct
 
 ### Object Not Found
 
@@ -211,19 +216,12 @@ Available prompts:
 
 ## Security Considerations
 
-### Password Storage
+### Credential Storage
 
-The configuration file stores your SAP password in plain text. To secure it:
-
-1. **File Permissions**: Restrict access to the config file
-   ```bash
-   chmod 600 ~/Library/Application\ Support/Claude/claude_desktop_config.json
-   ```
-
-2. **Alternative**: Use environment variables instead
-   - Set environment variables in your shell profile
-   - Omit the `env` section from the config file
-   - The server will read from system environment variables
+Your SAP password is stored by the `abaper` CLI in `~/.abaper/systems.json` (mode 0600), not in the Claude
+Desktop config. Use only your own SAP credentials, and keep `abaper serve --allow-static-sap` on your own
+machine: it serves anyone who can reach it with your identity, which is why it listens on `127.0.0.1` only.
+Never run it, or abaper-mcp with a shared SAP login, as a server for other people.
 
 ### Network Security
 
@@ -233,28 +231,23 @@ The configuration file stores your SAP password in plain text. To secure it:
 
 ## Multiple SAP Systems
 
-You can configure multiple SAP systems:
+Run one local backend per system on different ports, each with one of your own stored systems:
+
+```bash
+abaper serve --allow-static-sap --system dev --port 8080
+abaper serve --allow-static-sap --system qa  --port 8081
+```
 
 ```json
 {
   "mcpServers": {
     "abaper-dev": {
       "command": "/path/to/abaper-mcp",
-      "env": {
-        "SAP_HOST": "https://sapdev.company.com:8000",
-        "SAP_CLIENT": "100",
-        "SAP_USERNAME": "devuser",
-        "SAP_PASSWORD": "devpass"
-      }
+      "env": { "ABAPER_BACKEND_URL": "http://localhost:8080" }
     },
     "abaper-qa": {
       "command": "/path/to/abaper-mcp",
-      "env": {
-        "SAP_HOST": "https://sapqa.company.com:8000",
-        "SAP_CLIENT": "200",
-        "SAP_USERNAME": "qauser",
-        "SAP_PASSWORD": "qapass"
-      }
+      "env": { "ABAPER_BACKEND_URL": "http://localhost:8081" }
     }
   }
 }

@@ -51,10 +51,18 @@ The server uses the **Streamable HTTP Transport** from the official Go MCP SDK:
 | `ABAPER_MODE` | Operational mode | `stdio` | Yes (set to `sse`) |
 | `ABAPER_HTTP_PORT` | HTTP server port | `8015` | No |
 | `ABAPER_HTTP_HOST` | Host to bind to | `0.0.0.0` | No |
-| `SAP_HOST` | SAP ADT host URL | - | Yes |
-| `SAP_CLIENT` | SAP client number | `100` | No |
-| `SAP_USERNAME` | SAP username | - | Yes |
-| `SAP_PASSWORD` | SAP password | - | Yes |
+| `ABAPER_BACKEND_URL` | abaper backend (`abaper serve`) | `http://localhost:8080` | Yes |
+| `CAI_BFF_INTERNAL_URL` | cai-bff base URL for per-user SAP credential lookup | - | Yes |
+| `INTERNAL_SERVICE_SECRET` | Secret for cai-bff's internal endpoint | - | Yes |
+| `ABAPER_AUTH_TOKEN` | Bearer token required on the MCP endpoint | - | Recommended |
+| `ABAPER_REQUIRE_PRINCIPAL` | 401 for requests without `X-BF-User-Id`/`X-BF-Realm` | `true` | No |
+
+SAP credentials are per user: there is no shared SAP login in SSE mode, and
+abaper-mcp never reads `SAP_*` variables. Each session's user (`X-BF-User-Id`)
+has their own credentials fetched from cai-bff and sent to the backend as
+`X-SAP-*` headers. A session without a user, or whose user has not connected
+SAP, gets a tool error. The server refuses to start without
+`CAI_BFF_INTERNAL_URL` and `INTERNAL_SERVICE_SECRET`.
 
 ## Usage
 
@@ -64,10 +72,9 @@ The server uses the **Streamable HTTP Transport** from the official Go MCP SDK:
 # Set environment variables
 export ABAPER_MODE=sse
 export ABAPER_HTTP_PORT=8015
-export SAP_HOST=https://sapdev.company.com:8000
-export SAP_CLIENT=100
-export SAP_USERNAME=DEVELOPER01
-export SAP_PASSWORD=SecurePassword123
+export ABAPER_BACKEND_URL=http://localhost:8080
+export CAI_BFF_INTERNAL_URL=http://localhost:8081   # a local cai-bff
+export INTERNAL_SERVICE_SECRET=...                  # must match cai-bff's
 
 # Run the server
 ./abaper-mcp
@@ -90,10 +97,9 @@ Press Ctrl+C to exit.
 docker run -d \
   -e ABAPER_MODE=sse \
   -e ABAPER_HTTP_PORT=8015 \
-  -e SAP_HOST=https://saphost:8000 \
-  -e SAP_CLIENT=100 \
-  -e SAP_USERNAME=user \
-  -e SAP_PASSWORD=pass \
+  -e ABAPER_BACKEND_URL=http://abaper:8080 \
+  -e CAI_BFF_INTERNAL_URL=http://cai-bff:8080 \
+  -e INTERNAL_SERVICE_SECRET="$INTERNAL_SERVICE_SECRET" \
   -p 8015:8015 \
   --name abaper-mcp \
   --network trm-network \
@@ -106,10 +112,9 @@ The production deployment workflow automatically deploys in SSE mode:
 
 ```yaml
 docker run -d \
-  -e SAP_HOST=${{ secrets.SAP_HOST }} \
-  -e SAP_CLIENT=${{ secrets.SAP_CLIENT }} \
-  -e SAP_USERNAME=${{ secrets.SAP_USERNAME }} \
-  -e SAP_PASSWORD=${{ secrets.SAP_PASSWORD }} \
+  -e ABAPER_BACKEND_URL=http://abaper:8080 \
+  -e CAI_BFF_INTERNAL_URL=http://cai-bff:8080 \
+  -e INTERNAL_SERVICE_SECRET=${{ secrets.INTERNAL_SERVICE_SECRET }} \
   -e ABAPER_MODE=sse \
   -e ABAPER_HTTP_PORT=8015 \
   -e ABAPER_HTTP_HOST=0.0.0.0 \
@@ -380,9 +385,9 @@ For high-traffic scenarios:
 
 ### Credential Security
 
-1. **Environment Variables**: Use Docker secrets or vault for passwords
-2. **SAP Password**: Never commit to version control
-3. **Transport Security**: Always use HTTPS for SAP_HOST
+1. **No shared SAP login**: SAP credentials are per user, fetched from cai-bff per session; never configure SAP credentials on the server
+2. **INTERNAL_SERVICE_SECRET**: Use Docker secrets or vault; never commit it
+3. **Transport Security**: Users' SAP hosts should use HTTPS
 
 ### Access Control
 

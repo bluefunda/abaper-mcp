@@ -29,7 +29,9 @@ AI assistant (Claude Desktop / Cursor / Windsurf)
         → SAP system (ADT)
 ```
 
-**Critical constraint:** abaper-mcp does NOT connect to SAP directly. All SAP/ADT calls are delegated to the `abaper` REST backend via `APIClient`. The only required runtime config is `ABAPER_BACKEND_URL`.
+**Critical constraint:** abaper-mcp does NOT connect to SAP directly. All SAP/ADT calls are delegated to the `abaper` REST backend via `APIClient`. The only required runtime config in stdio mode is `ABAPER_BACKEND_URL`; `sse` mode also requires `CAI_BFF_INTERNAL_URL` and `INTERNAL_SERVICE_SECRET`.
+
+**SAP credentials are per user.** In `sse` mode each session's user (`X-BF-User-Id`) gets their own SAP credentials from cai-bff, sent to abaper as `X-SAP-*` headers; a session without a user or without connected SAP fails its tool calls. Never add a shared/default SAP identity for server mode. stdio mode is local and single-user and sends no SAP identity (the user runs `abaper serve --allow-static-sap` with their own credentials).
 
 ## Operational Modes
 
@@ -173,7 +175,10 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `sec
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ABAPER_BACKEND_URL` | Yes | `http://localhost:8080` | abaper REST API URL |
-| `ABAPER_MODE` | No | `stdio` | `stdio` or `sse` |
+| `ABAPER_MODE` | No | `stdio` | `stdio` or `sse`; anything else is refused |
+| `CAI_BFF_INTERNAL_URL` | `sse` | — | cai-bff URL for per-user SAP credentials; refused in stdio |
+| `INTERNAL_SERVICE_SECRET` | `sse` | — | Secret for cai-bff's internal endpoint; refused in stdio |
+| `ABAPER_REQUIRE_PRINCIPAL` | No | `true` | 401 for SSE requests without `X-BF-User-Id`/`X-BF-Realm` |
 | `LOG_LEVEL` | No | `info` | `debug`/`info`/`warn`/`error` |
 | `LOG_FORMAT` | No | `json` | `json`/`console` |
 
@@ -183,4 +188,5 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `sec
 - Introduce new Go packages without explicit request
 - Modify CI/CD workflows without explicit request
 - Add `.env` or credentials to version control
+- Fall back to a shared/default SAP identity in `sse` mode, or read `SAP_*` env
 - Use `fmt.Println` for logging — use `logger.L` (zap)
