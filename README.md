@@ -93,6 +93,7 @@ Set via `ABAPER_MODE` env var:
 | `update-object` | Update source code of an existing object |
 | `activate-object` | Activate an ABAP object |
 | `create-transport` | Create a Workbench transport request |
+| `get_transport_request` | Read-only: a transport request's tasks and objects |
 | `syntax-check` | Run ABAP syntax check |
 | `run-unit-tests` | Execute ABAP Unit tests |
 | `format-code` | Format ABAP source code |
