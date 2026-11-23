@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/bluefunda/abaper-mcp/compare/v0.12.0...v0.13.0) (2026-11-23)
+
+
+### Features
+
+* **tools:** get_transport_request (read-only) ([#85](https://github.com/bluefunda/abaper-mcp/issues/85)) ([ac81401](https://github.com/bluefunda/abaper-mcp/commit/ac814018b144e1b31094aa0cb95124ad805ce1b8))
+
 ## [0.12.0](https://github.com/bluefunda/abaper-mcp/compare/v0.11.0...v0.12.0) (2026-11-18)
 
 
