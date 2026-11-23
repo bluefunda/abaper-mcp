@@ -79,14 +79,14 @@ func (p principal) fields() []zap.Field {
 	}
 }
 
-// requirePrincipal rejects MCP requests that carry no principal — enabled by
-// ABAPER_REQUIRE_PRINCIPAL once every caller forwards one. Realm and user ID
+// requirePrincipal rejects MCP requests that carry no principal — on by
+// default (ABAPER_REQUIRE_PRINCIPAL=false turns it off). Realm and user ID
 // are required; the JWT is not, since cai-llm-router only forwards it when the
 // caller presented one.
 func requirePrincipal(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(headerPrincipalUserID) == "" || r.Header.Get(headerPrincipalRealm) == "" {
-			http.Error(w, "missing principal: "+headerPrincipalUserID+" and "+headerPrincipalRealm+" are required", http.StatusUnauthorized)
+			http.Error(w, "missing principal: "+headerPrincipalUserID+" and "+headerPrincipalRealm+" are required; sign in and connect SAP in Settings", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)

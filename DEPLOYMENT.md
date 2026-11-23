@@ -41,10 +41,11 @@ git commit -m "feat: major API overhaul [major]"
 - `DOCKER_PASSWORD` - Docker Hub password/token
 - `SERVER_USER` - SSH username for production server
 - `SERVER_IP` - Production server IP address
-- `SAP_HOST` - SAP system host
-- `SAP_CLIENT` - SAP client number
-- `SAP_USERNAME` - SAP username
-- `SAP_PASSWORD` - SAP password
+
+No SAP credentials are deployment secrets: in server (SSE) mode every user's
+SAP credentials are fetched per session from cai-bff (see
+[Environment Variables](#environment-variables)). Never configure a shared SAP
+login for the server.
 
 ### 2. Staging Deployment (`staging.yml`)
 
@@ -53,17 +54,13 @@ git commit -m "feat: major API overhaul [major]"
 **Features**:
 - Builds Docker image with `alpha` tag
 - Deploys to staging server
-- Uses separate staging credentials
+- Uses separate staging server credentials (no SAP credentials; see above)
 
 **Required Secrets**:
 - `DOCKER_USERNAME`
 - `DOCKER_PASSWORD`
 - `STAGING_SERVER_USER`
 - `STAGING_SERVER_IP`
-- `STAGING_SAP_HOST`
-- `STAGING_SAP_CLIENT`
-- `STAGING_SAP_USERNAME`
-- `STAGING_SAP_PASSWORD`
 
 ### 3. Release Workflow (`release.yml`)
 
@@ -129,10 +126,12 @@ services:
     container_name: abaper-mcp
     restart: unless-stopped
     environment:
-      - SAP_HOST=https://your-sap-host:8000
-      - SAP_CLIENT=100
-      - SAP_USERNAME=your-username
-      - SAP_PASSWORD=your-password
+      - ABAPER_MODE=sse
+      - ABAPER_BACKEND_URL=http://abaper:8080
+      # Per-user SAP credential lookup (required in SSE mode)
+      - CAI_BFF_INTERNAL_URL=http://cai-bff:8080
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
+      - ABAPER_AUTH_TOKEN=${ABAPER_AUTH_TOKEN}
     volumes:
       - ./logs:/var/log/abaper
       - ./config:/etc/abaper
@@ -154,10 +153,11 @@ docker-compose up -d
 docker run -d \
   --name abaper-mcp \
   --restart unless-stopped \
-  -e SAP_HOST="https://your-sap-host:8000" \
-  -e SAP_CLIENT="100" \
-  -e SAP_USERNAME="your-username" \
-  -e SAP_PASSWORD="your-password" \
+  -e ABAPER_MODE=sse \
+  -e ABAPER_BACKEND_URL="http://abaper:8080" \
+  -e CAI_BFF_INTERNAL_URL="http://cai-bff:8080" \
+  -e INTERNAL_SERVICE_SECRET="$INTERNAL_SERVICE_SECRET" \
+  -e ABAPER_AUTH_TOKEN="$ABAPER_AUTH_TOKEN" \
   -v $(pwd)/logs:/var/log/abaper \
   -v $(pwd)/config:/etc/abaper \
   bluefunda/abaper-mcp:latest
@@ -321,56 +321,38 @@ sudo apk add --allow-untrusted abaper-mcp_1.0.0_x86_64.apk
 
 ## Environment Variables
 
-### Required Variables
+SAP credentials are per user. abaper-mcp never reads `SAP_HOST`,
+`SAP_USERNAME`, `SAP_PASSWORD` or `SAP_CLIENT`, and server (SSE) mode has no
+shared SAP login: each session's user (`X-BF-User-Id`, forwarded by
+cai-llm-router) has their own credentials fetched from cai-bff and sent to the
+abaper backend as `X-SAP-*` headers. A session without a signed-in user, or
+whose user has not connected SAP, gets a tool error and never reaches SAP.
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `SAP_HOST` | SAP system host with protocol and port | `https://sapdev.company.com:8000` |
-| `SAP_CLIENT` | SAP client number | `100` |
-| `SAP_USERNAME` | SAP username | `DEVELOPER01` |
-| `SAP_PASSWORD` | SAP password | `SecurePassword123` |
+### Server (SSE) mode
 
-### Optional Variables
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `ABAPER_MODE` | Yes | `sse` for server mode | `stdio` |
+| `ABAPER_BACKEND_URL` | Yes | abaper backend (`abaper serve`) | `http://localhost:8080` |
+| `CAI_BFF_INTERNAL_URL` | Yes | cai-bff base URL for per-user SAP credential lookup; the server refuses to start without it | - |
+| `INTERNAL_SERVICE_SECRET` | Yes | Secret for cai-bff's internal endpoint (`X-Internal-Secret`); the server refuses to start without it | - |
+| `ABAPER_AUTH_TOKEN` | Recommended | Bearer token required on the MCP endpoint | - |
+| `ABAPER_REQUIRE_PRINCIPAL` | No | `false` accepts requests without `X-BF-User-Id`/`X-BF-Realm` (their SAP tool calls still fail) instead of rejecting them with 401 | `true` |
+| `LOG_LEVEL` | No | Logging level (debug, info, warn, error) | `info` |
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LOG_LEVEL` | Logging level (debug, info, warn, error) | `info` |
-| `LOG_FILE` | Path to log file | stdout |
+### Local (stdio) mode
 
-### Setting Environment Variables
-
-#### Linux/macOS
-```bash
-# In shell
-export SAP_HOST="https://sapdev.company.com:8000"
-export SAP_CLIENT="100"
-export SAP_USERNAME="DEVELOPER01"
-export SAP_PASSWORD="SecurePassword123"
-
-# In .env file
-cat > .env << EOF
-SAP_HOST=https://sapdev.company.com:8000
-SAP_CLIENT=100
-SAP_USERNAME=DEVELOPER01
-SAP_PASSWORD=SecurePassword123
-EOF
-
-# Load .env file
-source .env
-```
-
-#### Windows PowerShell
-```powershell
-$env:SAP_HOST = "https://sapdev.company.com:8000"
-$env:SAP_CLIENT = "100"
-$env:SAP_USERNAME = "DEVELOPER01"
-$env:SAP_PASSWORD = "SecurePassword123"
-```
+stdio mode is a single local user (Claude Desktop/Code) and never listens on
+the network. It sends no SAP identity: point `ABAPER_BACKEND_URL` at an abaper
+backend you run yourself with your own SAP credentials, for example
+`abaper serve --allow-static-sap` after `abaper system add`.
+Setting `CAI_BFF_INTERNAL_URL` or `INTERNAL_SERVICE_SECRET` in stdio mode is
+refused, as is any `ABAPER_MODE` other than `stdio` or `sse`.
 
 ## Deployment Checklist
 
 - [ ] Set up GitHub repository secrets
-- [ ] Configure `.env` file with SAP credentials
+- [ ] Configure `CAI_BFF_INTERNAL_URL` and `INTERNAL_SERVICE_SECRET` (no SAP credentials)
 - [ ] Test build locally: `make build`
 - [ ] Test Docker build: `make docker`
 - [ ] Validate GoReleaser config: `make validate-release`

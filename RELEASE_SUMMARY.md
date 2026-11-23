@@ -1,5 +1,11 @@
 # Release Infrastructure Summary
 
+> **Obsolete, kept for history.** This page describes an earlier design (NATS modes,
+> GitHub Actions deploys with shared `SAP_*` secrets) that abaper-mcp no longer implements.
+> Do not configure shared SAP credentials: abaper-mcp never reads `SAP_*`, and in server (`sse`)
+> mode every user's SAP credentials are fetched per session from cai-bff. See
+> [DEPLOYMENT.md](DEPLOYMENT.md#environment-variables) and [README.md](README.md).
+
 Complete deployment and release infrastructure has been implemented for ABAPER MCP, based on patterns from cai-mcp-go and abaperx.
 
 ## 🎯 What Was Implemented

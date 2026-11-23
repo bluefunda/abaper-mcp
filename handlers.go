@@ -15,6 +15,7 @@
 package main
 
 import (
+	"errors"
 	"time"
 
 	"github.com/bluefunda/abaper-mcp/internal/logger"
@@ -40,16 +41,23 @@ func (h *Handlers) newToolLogger(tool string) (*zap.Logger, time.Time) {
 	return logger.WithTool(requestID, tool).With(h.principal.fields()...), time.Now()
 }
 
-// NewHandlers creates a new handlers instance using the backend's own
-// default/shared SAP identity — stdio mode, and SSE sessions with no
-// connected per-user SAP credentials, both use this.
+// NewHandlers creates a handlers instance that sends no SAP identity to the
+// backend. stdio mode only: a single local user, pointed at a backend they run
+// with their own SAP credentials. SSE mode never uses it — every SSE session
+// goes through NewHandlersForSession.
 func NewHandlers(config *Config) *Handlers {
 	return newHandlersWithAPIClient(config, NewAPIClient(config.BackendURL))
 }
 
+// errNoSAPIdentity guards NewHandlersForSession against being called with
+// neither credentials nor an error: that must fail closed, never reach the
+// backend without a per-user identity.
+var errNoSAPIdentity = errors.New("no SAP credentials resolved for this session: sign in and connect SAP in Settings")
+
 // NewHandlersForSession creates a handlers instance scoped to one SSE
 // session's resolved SAP identity — see serverForSession in main.go for how
-// creds/credsErr/realm/principalToken get decided per session.
+// creds/credsErr/realm/principalToken get decided per session. With neither
+// creds nor credsErr every call fails with errNoSAPIdentity.
 func NewHandlersForSession(config *Config, creds *SAPCredentials, credsErr error, realm, principalToken string) *Handlers {
 	var apiClient *APIClient
 	switch {
@@ -58,7 +66,7 @@ func NewHandlersForSession(config *Config, creds *SAPCredentials, credsErr error
 	case creds != nil:
 		apiClient = NewAPIClientForUser(config.BackendURL, creds, realm, principalToken)
 	default:
-		apiClient = NewAPIClient(config.BackendURL)
+		apiClient = NewAPIClientWithError(config.BackendURL, errNoSAPIdentity)
 	}
 	return newHandlersWithAPIClient(config, apiClient)
 }

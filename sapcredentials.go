@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 )
@@ -46,7 +47,7 @@ var ErrSAPNotConnected = errors.New("SAP is not connected for this user")
 // simply hasn't connected SAP yet, so the caller can tell that apart from a
 // real backend/network failure.
 func fetchSAPCredentials(ctx context.Context, baseURL, internalSecret, userID string) (*SAPCredentials, error) {
-	url := strings.TrimRight(baseURL, "/") + "/internal/sap/credentials?userID=" + userID
+	url := strings.TrimRight(baseURL, "/") + "/internal/sap/credentials?userID=" + neturl.QueryEscape(userID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

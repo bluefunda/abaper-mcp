@@ -78,11 +78,10 @@ You can test the server manually:
 ```bash
 cd /Users/phani/src/abaper-mcp
 
-# Set environment variables
-export SAP_HOST="https://your-sap-host:8000"
-export SAP_CLIENT="100"
-export SAP_USERNAME="your-username"
-export SAP_PASSWORD="your-password"
+# Local stdio mode: point at an abaper backend you run yourself with your own
+# SAP credentials (abaper-mcp itself never reads SAP_* variables)
+abaper serve --allow-static-sap &
+export ABAPER_BACKEND_URL="http://localhost:8080"
 
 # Run the server
 ./abaper-mcp

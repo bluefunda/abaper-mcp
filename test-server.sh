@@ -6,11 +6,9 @@
 echo "Testing ABAPER MCP Server..."
 echo ""
 
-# Set dummy environment variables for testing
-export SAP_HOST="https://test.example.com:8000"
-export SAP_CLIENT="100"
-export SAP_USERNAME="testuser"
-export SAP_PASSWORD="testpass"
+# stdio mode, local only; initialize does not call the backend
+export ABAPER_MODE=stdio
+export ABAPER_BACKEND_URL="http://localhost:8080"
 
 # Send initialize message and capture response
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | \

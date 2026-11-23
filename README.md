@@ -45,7 +45,7 @@ Add to your Claude Desktop config:
     "abaper": {
       "command": "/usr/local/bin/abaper-mcp",
       "env": {
-        "ABAPER_BACKEND_URL": "https://your-abaper-host"
+        "ABAPER_BACKEND_URL": "http://localhost:8080"
       }
     }
   }
@@ -53,6 +53,10 @@ Add to your Claude Desktop config:
 ```
 
 Restart Claude Desktop. The server starts automatically via stdio.
+
+stdio mode is local and single-user and sends no SAP identity of its own: run an abaper backend with your own
+SAP credentials, e.g. `abaper serve --allow-static-sap` (which uses your active `abaper` system and listens on
+`127.0.0.1`).
 
 See [`examples/`](examples/) for Claude Desktop, Cursor, and Docker Compose configs.
 
@@ -65,6 +69,17 @@ Set via `ABAPER_MODE` env var:
 | `stdio` (default) | Standard I/O | Claude Desktop, Claude Code CLI |
 | `sse` | HTTP/SSE on `:8015` | Orchestrators, programmatic access |
 
+Any other value is refused at startup.
+
+### SAP credentials are per user
+
+In `sse` mode there is no shared SAP login. Each session's user (`X-BF-User-Id`, forwarded by cai-llm-router)
+has their own SAP credentials fetched from cai-bff (`CAI_BFF_INTERNAL_URL`, authenticated with
+`INTERNAL_SERVICE_SECRET`) and sent to the backend as `X-SAP-*` headers. A session without a user, or whose user
+has not connected SAP, gets a tool error ("sign in and connect SAP in Settings") and never reaches SAP. The server
+refuses to start in `sse` mode without `CAI_BFF_INTERNAL_URL` and `INTERNAL_SERVICE_SECRET`. abaper-mcp never reads
+`SAP_HOST`/`SAP_USERNAME`/`SAP_PASSWORD`/`SAP_CLIENT`.
+
 ## Configuration
 
 | Variable | Required | Default | Description |
@@ -73,7 +88,9 @@ Set via `ABAPER_MODE` env var:
 | `ABAPER_TS_URL` | No | — | Deprecated alias for `ABAPER_BACKEND_URL` (still honored if `ABAPER_BACKEND_URL` is unset) |
 | `ABAPER_MODE` | No | `stdio` | `stdio` or `sse` |
 | `ABAPER_AUTH_TOKEN` | No | — | If set, SSE requests require `Authorization: Bearer <token>` (`/health` stays public) |
-| `ABAPER_REQUIRE_PRINCIPAL` | No | `false` | If `true`, SSE requests without a forwarded principal (`X-BF-User-Id` + `X-BF-Realm` from cai-llm-router) get 401. Every tool call is logged with the principal either way. |
+| `CAI_BFF_INTERNAL_URL` | `sse` only | — | cai-bff base URL for per-user SAP credential lookup. Required in `sse` mode; refused in `stdio` mode |
+| `INTERNAL_SERVICE_SECRET` | `sse` only | — | Secret for cai-bff's internal endpoint (`X-Internal-Secret`). Required in `sse` mode; refused in `stdio` mode |
+| `ABAPER_REQUIRE_PRINCIPAL` | No | `true` | SSE requests without a forwarded principal (`X-BF-User-Id` + `X-BF-Realm` from cai-llm-router) get 401. `false` accepts them, but their SAP tool calls still fail (no shared SAP identity). Every tool call is logged with the principal. |
 | `S4_TEMPORAL_URL` | No | — | s4-temporal API URL; enables the `s4-*` batch tools when set |
 | `S4_ALLOWED_SCRIPTS` | No | `minio-batch-all.sh,minio-batch-folder.sh,minio-batch-xml.sh` | Comma-separated allowlist of batch scripts `s4-batch-analyze` may run |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |

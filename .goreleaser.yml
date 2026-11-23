@@ -208,15 +208,16 @@ release:
         "abaper": {
           "command": "/path/to/abaper-mcp",
           "env": {
-            "SAP_HOST": "https://your-sap-host:8000",
-            "SAP_CLIENT": "100",
-            "SAP_USERNAME": "your-username",
-            "SAP_PASSWORD": "your-password"
+            "ABAPER_BACKEND_URL": "http://localhost:8080"
           }
         }
       }
     }
     ```
+
+    This is local, single-user stdio mode: run your own abaper backend with your
+    own SAP credentials (`abaper serve --allow-static-sap`). Server (SSE) mode
+    uses per-user SAP credentials only; see DEPLOYMENT.md.
 
     See [CLAUDE_DESKTOP_SETUP.md](https://github.com/bluefunda/abaper-mcp/blob/main/CLAUDE_DESKTOP_SETUP.md) for detailed setup instructions.
 

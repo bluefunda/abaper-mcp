@@ -1,5 +1,11 @@
 # NATS Integration Guide
 
+> **Obsolete, kept for history.** This page describes an earlier design (NATS modes,
+> GitHub Actions deploys with shared `SAP_*` secrets) that abaper-mcp no longer implements.
+> Do not configure shared SAP credentials: abaper-mcp never reads `SAP_*`, and in server (`sse`)
+> mode every user's SAP credentials are fetched per session from cai-bff. See
+> [DEPLOYMENT.md](DEPLOYMENT.md#environment-variables) and [README.md](README.md).
+
 This document describes the NATS integration for ABAPER MCP server, enabling orchestrator-based deployment and multi-server architectures.
 
 ## Overview
