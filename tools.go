@@ -93,6 +93,8 @@ func registerTools(server *mcp.Server, handlers *Handlers) {
 		Description: "Create a new transport request for an ABAP object.",
 	}, handlers.HandleCreateTransport)
 
+	registerTransportRequestTool(server, handlers)
+
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create-and-activate",
 		Description: "Create or update an ABAP object and activate it in one operation. Supports program, class, interface, include, table, data_element, ddls, ddlx, srvd, srvb. Prefer this over separate create + activate calls.",

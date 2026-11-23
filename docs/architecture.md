@@ -74,6 +74,7 @@ Set via `ABAPER_MODE` environment variable (default: `stdio`).
 |------|-------------|
 | `transport-info` | Get transport request information |
 | `create-transport` | Create a new transport request |
+| `get_transport_request` | Read-only: a transport request's header, tasks and objects (`GET /api/v1/transports/{trkey}`) |
 
 ## MCP Resources
 
