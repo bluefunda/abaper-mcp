@@ -426,4 +426,4 @@ docker exec abaper-mcp env | grep SAP
 For deployment issues:
 - GitHub Issues: https://github.com/bluefunda/abaper-mcp/issues
 - Documentation: https://github.com/bluefunda/abaper-mcp
-- ABAPER Library: https://github.com/bluefunda/abaper
+- ABAPer (ADT backend and Go SDK): https://github.com/bluefunda/bluefunda-ai/tree/main/abaper (the old bluefunda/abaper repo is archived)
