@@ -456,7 +456,7 @@ For high-traffic scenarios:
 - [Go MCP SDK Documentation](https://github.com/modelcontextprotocol/go-sdk)
 - [Go MCP SDK Streamable Transport](https://pkg.go.dev/github.com/modelcontextprotocol/go-sdk/mcp#StreamableHTTPHandler)
 - [cai-mcp-client Orchestrator](https://github.com/bluefunda/cai-mcp-client)
-- [ABAPER Library](https://github.com/bluefunda/abaper)
+- [ABAPer (ADT backend and Go SDK)](https://github.com/bluefunda/bluefunda-ai/tree/main/abaper) (the old bluefunda/abaper repo is archived)
 
 ## Support
 
